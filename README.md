@@ -11,7 +11,7 @@ GNUPlex is only built for Linux at the moment. To install it:
 2. Run the following:
 
 ```shell
-sh <(curl -sL https://gnuplex.janie.page/install.sh)
+sh <(curl -sL https://gnuplex.davisgroup.uk/install.sh)
 ```
 
 This will prompt you for a directory in your PATH, then install GNUPlex there.
@@ -28,4 +28,4 @@ gnuplex -upgrade
 
 # More Info
 
-[See the wiki.](https://github.com/janie314/gnuplex/wiki)
+[See the wiki.](https://github.com/steve4650/gnuplex/wiki)
