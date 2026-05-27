@@ -20,13 +20,11 @@ function PageSelector(props: {
         }
       }}
     >
-      {[...new Array(Math.ceil(props.mediaItemCount / 1000)).keys()].map(
-        (i) => (
-          <option key={`range-${i}`} value={i}>
-            {`${i * 1000}-${Math.min(props.mediaItemCount || 0, (i + 1) * 1000 - 1)}`}
-          </option>
-        ),
-      )}
+      {[...new Array(Math.ceil(props.mediaItemCount / 1000)).keys()].map((i) => (
+        <option key={`range-${i}`} value={i}>
+          {`${i * 1000}-${Math.min(props.mediaItemCount || 0, (i + 1) * 1000 - 1)}`}
+        </option>
+      ))}
     </select>
   );
 }

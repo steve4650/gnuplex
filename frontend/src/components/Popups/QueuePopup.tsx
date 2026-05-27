@@ -5,9 +5,7 @@ function QueuePopup(props: {
   visible: boolean;
   mediaItem: MediaItem | null;
   queueIndex?: number | null;
-  setQueueingTargetMediaItem: React.Dispatch<
-    React.SetStateAction<MediaItem | null>
-  >;
+  setQueueingTargetMediaItem: React.Dispatch<React.SetStateAction<MediaItem | null>>;
   setPos: React.Dispatch<React.SetStateAction<number>>;
   closeHook: () => void;
 }) {
