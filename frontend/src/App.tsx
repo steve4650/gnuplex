@@ -154,7 +154,6 @@ function App() {
     <>
       {mobile ? (
         <>
-          {/** biome-ignore lint/a11y/useMediaCaption: just a dummy element to trigger mediacontrols */}
           <audio ref={dummyAudio} src="loop.ogg" autoPlay loop style={{ display: "none" }} />
         </>
       ) : null}
