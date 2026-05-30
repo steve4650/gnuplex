@@ -43,7 +43,8 @@ jobs:
       - name: lint frontend code
         run: |
           bun i
-          bun run biome ci --verbose
+          bun run oxfmt --check
+          bun run oxlint
       - name: lint python
         run: |
           uv run ruff format --check

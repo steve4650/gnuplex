@@ -12,11 +12,7 @@ let touchActive = false;
 let actionTaken = false;
 let actionResetTimeout: ReturnType<typeof setTimeout> | null = null;
 
-function useLongPress({
-  onShortClick,
-  onLongPress,
-  duration = 400,
-}: UseLongPressOptions) {
+function useLongPress({ onShortClick, onLongPress, duration = 400 }: UseLongPressOptions) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPressRef = useRef(false);
   const startX = useRef<number | null>(null);

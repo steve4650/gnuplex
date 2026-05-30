@@ -75,14 +75,10 @@ function ScreenshotPopup(props: { visible: boolean; closeHook: () => void }) {
             Close
           </button>
         </div>
-        {error ? (
-          <div className="text-sm text-red-700 dark:text-red-300">{error}</div>
-        ) : null}
+        {error ? <div className="text-sm text-red-700 dark:text-red-300">{error}</div> : null}
         <div className="grid gap-3 max-h-96 overflow-y-auto">
           {screenshots.length === 0 ? (
-            <div className="text-sm text-black dark:text-white">
-              No screenshots yet.
-            </div>
+            <div className="text-sm text-black dark:text-white">No screenshots yet.</div>
           ) : (
             screenshots.map((screenshot) => (
               <a

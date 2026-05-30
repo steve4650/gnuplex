@@ -88,9 +88,8 @@ def dev_compiled():
 def fmt():
     """Format/lint this repo"""
     run("find backend -name '*.go' -print0 | xargs -0 gofmt -w -s")
-    run("bun run biome format --write")
-    run("bun run biome lint --write")
-    run("bun run biome check --write")
+    run("bun run oxfmt")
+    run("bun run oxlint --fix-dangerously")
     run("uv run ruff format")
     run("uv run ruff check --fix")
 
@@ -135,7 +134,7 @@ def run(cmd, **kwargs):
     res = subprocess.run(cmd, shell=True, check=True, **kwargs)
     if res.returncode != 0:
         print("cmd failed. exiting...")
-        os.exit(res.returncode)
+        sys.exit(res.returncode)
 
 
 def set_go_version():
