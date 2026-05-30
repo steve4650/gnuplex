@@ -54,4 +54,4 @@ jobs:
           uv run make.py build_frontend
       - name: check for TODO string instances
         run: |
-          git ls-files | grep -v test-branch\.yml | xargs grep -Ii todo | wc -l | uv run python3 -c "import sys; sys.exit(0 if int(sys.argv[1]) == 0 else 1)"
+          git ls-files | grep -v test-branch\.yml | xargs grep -Ii todo | wc -l | xargs uv run python3 -c "import sys; sys.exit(0 if int(sys.argv[1]) == 0 else 1)"

@@ -134,7 +134,7 @@ def run(cmd, **kwargs):
     res = subprocess.run(cmd, shell=True, check=True, **kwargs)
     if res.returncode != 0:
         print("cmd failed. exiting...")
-        os.exit(res.returncode)
+        sys.exit(res.returncode)
 
 
 def set_go_version():
