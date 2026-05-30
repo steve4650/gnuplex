@@ -88,9 +88,8 @@ def dev_compiled():
 def fmt():
     """Format/lint this repo"""
     run("find backend -name '*.go' -print0 | xargs -0 gofmt -w -s")
-    run("bun run biome format --write")
-    run("bun run biome lint --write")
-    run("bun run biome check --write")
+    run("bun run oxfmt")
+    run("bun run oxlint --fix-dangerously")
     run("uv run ruff format")
     run("uv run ruff check --fix")
 
