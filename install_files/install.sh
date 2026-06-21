@@ -36,7 +36,7 @@ then
   exit 1
 fi
 # clone from git
-git clone -b "release-linux-$libc-x86_64" https://github.com/janie314/gnuplex.git "$install_dir/gnuplex-code"
+git clone -b "release-linux-$libc-x86_64" https://github.com/steve4650/gnuplex.git "$install_dir/gnuplex-code"
 cd "$install_dir"
 ln -s gnuplex-code/backend/bin/gnuplex .
 # systemd service
