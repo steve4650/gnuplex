@@ -1,3 +1,4 @@
+#!/usr/bin/env -S uv run --script
 import glob
 import hashlib
 import os
@@ -86,7 +87,7 @@ def dev_compiled():
 
 
 def fmt():
-    """Format/lint this repo"""
+    """Format this repo"""
     run("find backend -name '*.go' -print0 | xargs -0 gofmt -w -s")
     run("bun run oxfmt")
     run("bun run oxlint --fix-dangerously")
@@ -104,8 +105,12 @@ def go_version():
 
 
 def lint():
-    """Alias for fmt"""
-    fmt()
+    """Lint this repo"""
+    run("gofmt -s -d . | wc -l | xargs uv run python3 -c 'import sys; sys.exit(1 if int(sys.argv[1])>0 else 0)'")
+    run("bun run oxfmt --check")
+    run("bun run oxlint --fix-dangerously")
+    run("uv run ruff format --check")
+    run("uv run ruff check")
 
 
 def test():
