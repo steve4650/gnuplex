@@ -36,19 +36,9 @@ jobs:
       - name: run shellcheck
         run: |
           find -name '*.sh' -and -not -path '*/node_modules/*' | xargs shellcheck
-      - name: check go formatting
-        working-directory: backend
+      - name: lint repo
         run: |
-          gofmt -s -d . | wc -l | xargs uv run python3 -c "import sys; sys.exit(1 if int(sys.argv[1])>0 else 0)"
-      - name: lint frontend code
-        run: |
-          bun i
-          bun run oxfmt --check
-          bun run oxlint
-      - name: lint python
-        run: |
-          uv run ruff format --check
-          uv run ruff check
+          uv run make.py lint
       - name: compile the frontend
         run: |
           uv run make.py build_frontend
