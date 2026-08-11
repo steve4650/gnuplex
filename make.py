@@ -89,6 +89,7 @@ def dev_compiled():
 def fmt():
     """Format this repo"""
     run("find backend -name '*.go' -print0 | xargs -0 gofmt -w -s")
+    run("bun i")
     run("bun run oxfmt")
     run("bun run oxlint --fix-dangerously")
     run("uv run ruff format")
@@ -106,7 +107,8 @@ def go_version():
 
 def lint():
     """Lint this repo"""
-    run("gofmt -s -d . | wc -l | xargs uv run python3 -c 'import sys; sys.exit(1 if int(sys.argv[1])>0 else 0)'")
+    run("gofmt -s -d backend | wc -l | xargs uv run python3 -c 'import sys; sys.exit(1 if int(sys.argv[1])>0 else 0)'")
+    run("bun i")
     run("bun run oxfmt --check")
     run("bun run oxlint --fix-dangerously")
     run("uv run ruff format --check")
