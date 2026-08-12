@@ -8,9 +8,7 @@ function Medialist(props: {
   mediaItemCount: number | null;
   paginationOffset: number | null;
   setPaginationOffset: React.Dispatch<React.SetStateAction<number>> | null;
-  setQueueingTargetMediaItem: React.Dispatch<
-    React.SetStateAction<MediaItem | null>
-  >;
+  setQueueingTargetMediaItem: React.Dispatch<React.SetStateAction<MediaItem | null>>;
   setQueueIndex?: React.Dispatch<React.SetStateAction<number | null>>;
 }) {
   if (props.mediaItems.length === 0 || props.mediaItems[0] === null) {

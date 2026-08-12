@@ -4,9 +4,7 @@ import { useLongPress } from "../../lib/useLongPress";
 function MediaItemButton(props: {
   mediaItem: MediaItem;
   queueIndex?: number;
-  setQueueingTargetMediaItem: React.Dispatch<
-    React.SetStateAction<MediaItem | null>
-  >;
+  setQueueingTargetMediaItem: React.Dispatch<React.SetStateAction<MediaItem | null>>;
   setQueueIndex?: React.Dispatch<React.SetStateAction<number | null>>;
 }) {
   const longPressHandlers = useLongPress({

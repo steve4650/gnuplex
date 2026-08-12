@@ -1,15 +1,32 @@
 package db
 
 import (
+	"database/sql"
 	"gnuplex/models"
+	"regexp"
 	"strings"
 	"time"
 
+	"github.com/mattn/go-sqlite3"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
 )
+
+func init() {
+	sql.Register("sqlite3_extended", &sqlite3.SQLiteDriver{
+		ConnectHook: func(conn *sqlite3.SQLiteConn) error {
+			return conn.RegisterFunc("regexp", func(re, s string) bool {
+				matched, err := regexp.MatchString(re, s)
+				if err != nil {
+					return false
+				}
+				return matched
+			}, true)
+		},
+	})
+}
 
 type DB struct {
 	ORM *gorm.DB
@@ -20,7 +37,10 @@ func Init(path string, verbose bool) (*DB, error) {
 	if verbose {
 		logLevel = logger.Info
 	}
-	orm, err := gorm.Open(sqlite.Open(path), &gorm.Config{
+	orm, err := gorm.Open(sqlite.New(sqlite.Config{
+		DriverName: "sqlite3_extended",
+		DSN:        path,
+	}), &gorm.Config{
 		Logger: logger.Default.LogMode(logLevel),
 	})
 	if err != nil {
@@ -112,11 +132,44 @@ func (db *DB) GetLast25Played() ([]models.MediaItem, error) {
 	return mediaItems, err
 }
 
+// BuildSearchRegex converts a user search string into a safe, case-insensitive regex pattern.
+// Successive spaces in search turn into .* in regex, and special regex characters are escaped.
+func BuildSearchRegex(search string) string {
+	fields := strings.Fields(search)
+	if len(fields) == 0 {
+		return ""
+	}
+	for i, f := range fields {
+		fields[i] = regexp.QuoteMeta(f)
+	}
+	return "(?i)" + strings.Join(fields, ".*")
+}
+
 // Get all MediaItems which match the given search string.
 func (db *DB) GetMediaItems(search string, offset int) ([]models.MediaItem, int64, error) {
 	var mediaItems []models.MediaItem
+	search = strings.TrimSpace(search)
+	if search == "" {
+		if err := db.ORM.
+			Order("path").
+			Limit(1000).
+			Offset(offset).
+			Find(&mediaItems).Error; err != nil {
+			return nil, 0, err
+		}
+		var count int64
+		if err := db.ORM.
+			Model(models.MediaItem{}).
+			Count(&count).Error; err != nil {
+			return nil, 0, err
+		}
+		return mediaItems, count, nil
+	}
+
+	pattern := BuildSearchRegex(search)
+
 	if err := db.ORM.
-		Where("instr(lower(path), ?) != 0", strings.ToLower(search)).
+		Where("path REGEXP ?", pattern).
 		Order("path").
 		Limit(1000).
 		Offset(offset).
@@ -126,7 +179,7 @@ func (db *DB) GetMediaItems(search string, offset int) ([]models.MediaItem, int6
 	var count int64
 	if err := db.ORM.
 		Model(models.MediaItem{}).
-		Where("instr(lower(path), ?) != 0", strings.ToLower(search)).
+		Where("path REGEXP ?", pattern).
 		Count(&count).Error; err != nil {
 		return nil, 0, err
 	}

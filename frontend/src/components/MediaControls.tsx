@@ -86,11 +86,7 @@ function MediaControls(props: {
             onMouseUp={() => API.setPos(props.pos)}
             onTouchCancel={() => API.setPos(props.pos)}
           />
-          <button
-            type="button"
-            className="btn-subtle"
-            onClick={() => setPosInputPopup(true)}
-          >
+          <button type="button" className="btn-subtle" onClick={() => setPosInputPopup(true)}>
             {timeFormat(props.pos)}
           </button>
         </div>
@@ -107,11 +103,7 @@ function MediaControls(props: {
             onMouseUp={() => API.setVol(props.vol)}
             onTouchCancel={() => API.setVol(props.vol)}
           />
-          <button
-            type="button"
-            className="btn-subtle"
-            onClick={() => setVolInputPopup(true)}
-          >
+          <button type="button" className="btn-subtle" onClick={() => setVolInputPopup(true)}>
             {props.vol}
           </button>
         </div>

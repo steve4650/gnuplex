@@ -182,21 +182,11 @@ function SettingsPopup(props: {
             />
           </label>
           <div className="flex flex-wrap gap-3 items-center">
-            <button
-              type="button"
-              className="btn-standard px-4"
-              onClick={saveLibrarySettings}
-            >
+            <button type="button" className="btn-standard px-4" onClick={saveLibrarySettings}>
               Save Library Settings
             </button>
-            <WorkingSpinnerTSX
-              visible={saveFileExtsWorking || saveMediadirsWorking}
-            />
-            <button
-              type="button"
-              className="btn-standard px-4"
-              onClick={refreshLibrary}
-            >
+            <WorkingSpinnerTSX visible={saveFileExtsWorking || saveMediadirsWorking} />
+            <button type="button" className="btn-standard px-4" onClick={refreshLibrary}>
               Refresh Library
             </button>
             <WorkingSpinnerTSX visible={refreshLibraryWorking} />
@@ -204,11 +194,7 @@ function SettingsPopup(props: {
         </div>
 
         <div className="flex gap-2 justify-start">
-          <button
-            type="button"
-            className="btn-standard px-4"
-            onClick={props.closeHook}
-          >
+          <button type="button" className="btn-standard px-4" onClick={props.closeHook}>
             Close
           </button>
         </div>
