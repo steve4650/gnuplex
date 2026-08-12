@@ -21,7 +21,7 @@ mv bun-linux-x64-musl/bun .
 export GIT_SSH_COMMAND="ssh -i /tmp/gnuplex-deploy -o StrictHostKeyChecking=no"
 
 cd /
-git clone git@github.com:janie314/gnuplex.git
+git clone git@github.com:steve4650/gnuplex.git
 cd gnuplex
 git config user.name "release workflow"
 git config user.email "x@example.com"
