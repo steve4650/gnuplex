@@ -105,11 +105,7 @@ class API {
     return await fetch("/api/nowplaying").then(json);
   }
 
-  public static async playMedia(
-    mediaItem: MediaItem,
-    play_next: boolean,
-    play_last: boolean,
-  ) {
+  public static async playMedia(mediaItem: MediaItem, play_next: boolean, play_last: boolean) {
     return await fetch("/api/playmedia", {
       ...post,
       headers,
@@ -219,9 +215,7 @@ class API {
   }
 
   public static async getRecentScreenshots(limit = 10): Promise<Screenshot[]> {
-    return await fetch(
-      `/api/screenshots?limit=${encodeURIComponent(limit)}`,
-    ).then(json);
+    return await fetch(`/api/screenshots?limit=${encodeURIComponent(limit)}`).then(json);
   }
 
   public static async takeScreenshot(): Promise<Screenshot> {

@@ -1,3 +1,4 @@
+#!/usr/bin/env -S uv run --script
 import glob
 import hashlib
 import os
@@ -86,11 +87,11 @@ def dev_compiled():
 
 
 def fmt():
-    """Format/lint this repo"""
+    """Format this repo"""
     run("find backend -name '*.go' -print0 | xargs -0 gofmt -w -s")
-    run("bun run biome format --write")
-    run("bun run biome lint --write")
-    run("bun run biome check --write")
+    run("bun i")
+    run("bun run oxfmt")
+    run("bun run oxlint --fix-dangerously")
     run("uv run ruff format")
     run("uv run ruff check --fix")
 
@@ -105,8 +106,13 @@ def go_version():
 
 
 def lint():
-    """Alias for fmt"""
-    fmt()
+    """Lint this repo"""
+    run("gofmt -s -d backend | wc -l | xargs uv run python3 -c 'import sys; sys.exit(1 if int(sys.argv[1])>0 else 0)'")
+    run("bun i")
+    run("bun run oxfmt --check")
+    run("bun run oxlint --fix-dangerously")
+    run("uv run ruff format --check")
+    run("uv run ruff check")
 
 
 def test():
@@ -135,7 +141,7 @@ def run(cmd, **kwargs):
     res = subprocess.run(cmd, shell=True, check=True, **kwargs)
     if res.returncode != 0:
         print("cmd failed. exiting...")
-        os.exit(res.returncode)
+        sys.exit(res.returncode)
 
 
 def set_go_version():

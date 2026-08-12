@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import { API, type SubTrack } from "../lib/API";
 
 function SubSelector(props: { subs: SubTrack[] | null }) {
-  const selectedID =
-    (props.subs || []).filter((sub) => sub.selected)[0]?.id || -1;
+  const selectedID = (props.subs || []).filter((sub) => sub.selected)[0]?.id || -1;
   const [subID, setSubID] = useState(selectedID);
   useEffect(() => {
     setSubID(selectedID);

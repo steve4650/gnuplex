@@ -19,12 +19,10 @@ function App() {
   const [nowPlaying, setNowPlaying] = useState<MediaItem[]>([]);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [mediaItemCount, setMediaItemCount] = useState(0);
-  const [queueingTargetMediaItem, setQueueingTargetMediaItem] =
-    useState<MediaItem | null>(null);
+  const [queueingTargetMediaItem, setQueueingTargetMediaItem] = useState<MediaItem | null>(null);
   const [queueIndex, setQueueIndex] = useState<number | null>(null);
   const [paginationOffset, setPaginationOffset] = useState(
-    Number(new URLSearchParams(window.location.search).get("offset") || 0) /
-      1000,
+    Number(new URLSearchParams(window.location.search).get("offset") || 0) / 1000,
   );
   const [last25, setLast25] = useState<MediaItem[]>([]);
 
@@ -135,10 +133,7 @@ function App() {
       urlParams.set("search", searchQueryDebounced);
       urlParams.set("offset", "0");
       updateURL = true;
-    } else if (
-      (Number(urlParams.get("offset")) || 0) / 1000 !==
-      paginationOffset
-    ) {
+    } else if ((Number(urlParams.get("offset")) || 0) / 1000 !== paginationOffset) {
       urlParams.set("offset", paginationOffset.toString());
       updateURL = true;
     }
@@ -146,12 +141,10 @@ function App() {
       const newURL = `${window.location.pathname}?${urlParams.toString()}`;
       window.history.pushState({}, "", newURL);
     }
-    API.getMediaItems(searchQueryDebounced, paginationOffset * 1000).then(
-      (res) => {
-        setMediaItems(res.res);
-        setMediaItemCount(res.count);
-      },
-    );
+    API.getMediaItems(searchQueryDebounced, paginationOffset * 1000).then((res) => {
+      setMediaItems(res.res);
+      setMediaItemCount(res.count);
+    });
   }
   useEffect(() => {
     refreshMediaItems();
@@ -161,23 +154,14 @@ function App() {
     <>
       {mobile ? (
         <>
-          {/** biome-ignore lint/a11y/useMediaCaption: just a dummy element to trigger mediacontrols */}
-          <audio
-            ref={dummyAudio}
-            src="loop.ogg"
-            autoPlay
-            loop
-            style={{ display: "none" }}
-          />
+          <audio ref={dummyAudio} src="loop.ogg" autoPlay loop style={{ display: "none" }} />
         </>
       ) : null}
       <div
         className="flex flex-row flex-wrap max-w-full text-base font-sans pb-2/100 dark:bg-stone-950 text:white"
         style={{
           opacity:
-            castPopupVisible || screenshotPopupVisible || settingsPopupVisible
-              ? "50%"
-              : "100%",
+            castPopupVisible || screenshotPopupVisible || settingsPopupVisible ? "50%" : "100%",
         }}
       >
         <div className="sm:basis-1 md:basis-1/4 sm:max-w-full lg:max-w-sm grow flex-col px-1/100 pb-2 mb-1">

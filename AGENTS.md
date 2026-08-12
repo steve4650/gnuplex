@@ -10,7 +10,7 @@ The frontend is written in Vite/React/Tailwind, in `./frontend`.
 
 `make.py` lists all common dev tasks, like building frontend/backend and formatting/linting.
 
-## To Remember 
+## To Remember
 
 Always use `bun` rather than `node` or `npm` in `./frontend`.
 

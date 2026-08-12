@@ -1,10 +1,7 @@
 import { useEffect, useState } from "react";
 import "./Popup.css";
 import { API } from "../../lib/API";
-import {
-  secondsToTimeComponents,
-  timeComponentsToSeconds,
-} from "../../lib/Helpers";
+import { secondsToTimeComponents, timeComponentsToSeconds } from "../../lib/Helpers";
 
 function PosInputPopup(props: {
   visible: boolean;
@@ -18,9 +15,7 @@ function PosInputPopup(props: {
   const [seconds, setSeconds] = useState(0);
 
   useEffect(() => {
-    const { hours, minutes, seconds } = secondsToTimeComponents(
-      props.currentPos,
-    );
+    const { hours, minutes, seconds } = secondsToTimeComponents(props.currentPos);
     setHours(hours);
     setMinutes(minutes);
     setSeconds(seconds);
@@ -103,8 +98,7 @@ function PosInputPopup(props: {
             className="btn-standard"
             onClick={() => {
               const totalSecs = props.currentPos;
-              const { hours, minutes, seconds } =
-                secondsToTimeComponents(totalSecs);
+              const { hours, minutes, seconds } = secondsToTimeComponents(totalSecs);
               setHours(hours);
               setMinutes(minutes);
               setSeconds(seconds);
