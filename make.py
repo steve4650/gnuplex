@@ -110,7 +110,7 @@ def lint():
     run("gofmt -s -d backend | wc -l | xargs uv run python3 -c 'import sys; sys.exit(1 if int(sys.argv[1])>0 else 0)'")
     run("bun i")
     run("bun run oxfmt --check")
-    run("bun run oxlint --fix-dangerously")
+    run("bun run oxlint")
     run("uv run ruff format --check")
     run("uv run ruff check")
 

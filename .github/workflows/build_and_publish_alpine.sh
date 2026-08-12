@@ -1,5 +1,6 @@
 #!/bin/sh
 set -e
+set -x
 
 umask 077
 echo "$1" >/tmp/gnuplex-deploy
@@ -8,7 +9,7 @@ GNUPLEX_GO_VERSION="$2"
 apk add uv git curl bash openssh gcc musl-dev libstdc++ unzip
 
 cd /usr/local/bin
-wget "https://go.dev/dl/go$GNUPLEX_GO_VERSION.linux-amd64.tar.gz"
+wget "https://go.dev/dl/$GNUPLEX_GO_VERSION.linux-amd64.tar.gz"
 tar xvzf go*.gz
 mv go godir
 ln -s godir/bin/go .
@@ -21,7 +22,7 @@ mv bun-linux-x64-musl/bun .
 export GIT_SSH_COMMAND="ssh -i /tmp/gnuplex-deploy -o StrictHostKeyChecking=no"
 
 cd /
-git clone git@github.com:janie314/gnuplex.git
+git clone git@github.com:steve4650/gnuplex.git
 cd gnuplex
 git config user.name "release workflow"
 git config user.email "x@example.com"
