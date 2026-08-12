@@ -30,7 +30,7 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: merge main into release
         run: |
-          git remote set-url origin git@github.com:janie314/gnuplex.git
+          git remote set-url origin git@github.com:steve4650/gnuplex.git
           git config user.name "release workflow"
           git config user.email "x@example.com"
           git checkout release-linux-glibc-x86_64
