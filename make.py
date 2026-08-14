@@ -94,6 +94,7 @@ def fmt():
     run("bun run oxlint --fix-dangerously")
     run("uv run ruff format")
     run("uv run ruff check --fix")
+    run("cd backend && go mod tidy")
 
 
 def go_source_hash():
