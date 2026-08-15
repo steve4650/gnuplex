@@ -12,6 +12,9 @@ import pygit2
 import structlog
 
 log = structlog.get_logger()
+from rich.traceback import install
+
+install(show_locals=True)
 
 
 def build():
@@ -113,7 +116,11 @@ def go_version():
 
 def lint():
     """Lint this repo"""
-    run("gofmt -s -d backend | wc -l | xargs uv run python3 -c 'import sys; sys.exit(1 if int(sys.argv[1])>0 else 0)'")
+    git_status = git_status_clean()
+    golint_out = run_stdout("gofmt -s -d backend", should_log=True)
+    if len(golint_out) > 0:
+        log.error("go lint failed. run ./make.py fmt to fix.")
+        sys.exit(1)
     run("bun i")
     run("bun run oxfmt --check")
     run("bun run oxlint")
@@ -122,7 +129,10 @@ def lint():
     # run go mod tidy and make sure git status is clean after
     run("cd backend && go mod tidy")
     if not git_status_clean():
-        log.error("git status is not clean after go mod tidy. Please commit the changes.")
+        if git_status:
+            log.error("git status is not clean after go mod tidy.")
+        else:
+            log.error("git status is not clean.")
         sys.exit(1)
 
 
@@ -132,9 +142,9 @@ def test():
 
 
 def platform():
-    os = subprocess.check_output("uname -s", shell=True).decode().strip()
-    arch = subprocess.check_output("uname -m", shell=True).decode().strip()
-    libc = "musl" if "musl" in subprocess.check_output("ldd /bin/ls", shell=True).decode().strip() else "glibc"
+    os = run_stdout("uname -s")
+    arch = run_stdout("uname -m")
+    libc = "musl" if "musl" in run_stdout("ldd /bin/ls") else "glibc"
     return f"{os}-{libc}-{arch}".lower()
 
 
@@ -153,6 +163,18 @@ def run(cmd, **kwargs):
     if res.returncode != 0:
         log.error("cmd failed. exiting...")
         sys.exit(res.returncode)
+
+
+def run_stdout(cmd, error_status_ok=True, should_log=False):
+    if should_log:
+        log.info(f"+ {cmd}")
+    try:
+        return subprocess.check_output(cmd, shell=True).decode().strip()
+    except subprocess.CalledProcessError as e:
+        if error_status_ok:
+            return e.output.decode().strip()
+        log.error(f"cmd failed: {e.output.decode().strip()}")
+        sys.exit(e.returncode)
 
 
 def set_go_version():
