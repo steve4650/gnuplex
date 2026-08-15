@@ -117,7 +117,7 @@ def go_version():
 def lint():
     """Lint this repo"""
     git_status = git_status_clean()
-    golint_out = run_stdout("gofmt -s -d backend")
+    golint_out = run_stdout("gofmt -s -d backend", should_log=True)
     if len(golint_out) > 0:
         log.error("go lint failed. run ./make.py fmt to fix.")
         sys.exit(1)
@@ -142,9 +142,9 @@ def test():
 
 
 def platform():
-    os = subprocess.check_output("uname -s", shell=True).decode().strip()
-    arch = subprocess.check_output("uname -m", shell=True).decode().strip()
-    libc = "musl" if "musl" in subprocess.check_output("ldd /bin/ls", shell=True).decode().strip() else "glibc"
+    os = run_stdout("uname -s")
+    arch = run_stdout("uname -m")
+    libc = "musl" if "musl" in run_stdout("ldd /bin/ls") else "glibc"
     return f"{os}-{libc}-{arch}".lower()
 
 
@@ -165,8 +165,9 @@ def run(cmd, **kwargs):
         sys.exit(res.returncode)
 
 
-def run_stdout(cmd, error_status_ok=True):
-    log.info(f"+ {cmd}")
+def run_stdout(cmd, error_status_ok=True, should_log=False):
+    if should_log:
+        log.info(f"+ {cmd}")
     try:
         return subprocess.check_output(cmd, shell=True).decode().strip()
     except subprocess.CalledProcessError as e:
