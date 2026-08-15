@@ -8,6 +8,11 @@ import sys
 import time
 from pathlib import Path
 
+import pygit2
+import structlog
+
+log = structlog.get_logger()
+
 
 def build():
     """Build the frontend and the backend"""
@@ -94,6 +99,7 @@ def fmt():
     run("bun run oxlint --fix-dangerously")
     run("uv run ruff format")
     run("uv run ruff check --fix")
+    run("cd backend && go mod tidy")
 
 
 def go_source_hash():
@@ -113,6 +119,11 @@ def lint():
     run("bun run oxlint")
     run("uv run ruff format --check")
     run("uv run ruff check")
+    # run go mod tidy and make sure git status is clean after
+    run("cd backend && go mod tidy")
+    if not git_status_clean():
+        log.error("git status is not clean after go mod tidy. Please commit the changes.")
+        sys.exit(1)
 
 
 def test():
@@ -137,10 +148,10 @@ def remove_sockets():
 
 
 def run(cmd, **kwargs):
-    print(f"+ {cmd}")
+    log.info(f"+ {cmd}")
     res = subprocess.run(cmd, shell=True, check=True, **kwargs)
     if res.returncode != 0:
-        print("cmd failed. exiting...")
+        log.error("cmd failed. exiting...")
         sys.exit(res.returncode)
 
 
@@ -161,6 +172,13 @@ def set_go_version():
 
     # Update backend/go.mod
     run(f'sed -E -i -e "s/^go [0-9]+\\.[0-9]+\\.[0-9]+$/go {version}/" backend/go.mod')
+
+
+def git_status_clean():
+    """Check if the git status is clean"""
+    repo = pygit2.Repository(Path(__file__).parent)
+    status = repo.status()
+    return len(status) == 0
 
 
 def _source_hash():
