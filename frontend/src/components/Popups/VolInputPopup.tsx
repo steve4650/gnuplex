@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import "./Popup.css";
 import { API } from "../../lib/API";
+import { useEscapeKey } from "../../lib/useEscapeKey";
 
 function VolInputPopup(props: {
   visible: boolean;
@@ -9,6 +10,10 @@ function VolInputPopup(props: {
   setVol: React.Dispatch<React.SetStateAction<number>>;
 }) {
   const [vol, setVol] = useState(props.currentVol);
+
+  useEscapeKey(() => {
+    props.setVolInputPopup(false);
+  }, props.visible);
 
   useEffect(() => {
     setVol(props.currentVol);

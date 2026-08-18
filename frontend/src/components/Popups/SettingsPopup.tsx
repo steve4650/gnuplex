@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import "./Popup.css";
 import { API } from "../../lib/API";
 import { WorkingSpinnerTSX } from "../WorkingSpinner";
+import { useEscapeKey } from "../../lib/useEscapeKey";
 
 const filters = [
   { label: "Black and White", value: "bw" },
@@ -27,6 +28,10 @@ function SettingsPopup(props: {
   const [refreshLibraryWorking, setRefreshLibraryWorking] = useState(false);
   const [saveMediadirsWorking, setSaveMediadirsWorking] = useState(false);
   const [saveFileExtsWorking, setSaveFileExtsWorking] = useState(false);
+
+  useEscapeKey(() => {
+    props.closeHook();
+  }, props.visible);
 
   const refreshSubDelay = async () => {
     try {

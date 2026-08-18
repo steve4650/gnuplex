@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
 import "./Popup.css";
 import { API, type Screenshot } from "../../lib/API";
+import { useEscapeKey } from "../../lib/useEscapeKey";
 
 function ScreenshotPopup(props: { visible: boolean; closeHook: () => void }) {
   const [screenshots, setScreenshots] = useState<Screenshot[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEscapeKey(() => {
+    props.closeHook();
+  }, props.visible);
 
   const refreshScreenshots = async () => {
     const res = await API.getRecentScreenshots(8);

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import "./Popup.css";
 import { API } from "../../lib/API";
 import { secondsToTimeComponents, timeComponentsToSeconds } from "../../lib/Helpers";
+import { useEscapeKey } from "../../lib/useEscapeKey";
 
 function PosInputPopup(props: {
   visible: boolean;
@@ -13,6 +14,10 @@ function PosInputPopup(props: {
   const [hours, setHours] = useState(0);
   const [minutes, setMinutes] = useState(0);
   const [seconds, setSeconds] = useState(0);
+
+  useEscapeKey(() => {
+    props.setPosInputPopup(false);
+  }, props.visible);
 
   useEffect(() => {
     const { hours, minutes, seconds } = secondsToTimeComponents(props.currentPos);
