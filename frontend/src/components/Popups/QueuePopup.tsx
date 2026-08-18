@@ -1,5 +1,6 @@
 import "./Popup.css";
 import { API, type MediaItem } from "../../lib/API";
+import { useEscapeKey } from "../../lib/useEscapeKey";
 
 function QueuePopup(props: {
   visible: boolean;
@@ -9,6 +10,9 @@ function QueuePopup(props: {
   setPos: React.Dispatch<React.SetStateAction<number>>;
   closeHook: () => void;
 }) {
+  useEscapeKey(() => {
+    props.closeHook();
+  }, props.visible);
   if (props.visible) {
     return (
       <div className="popup bg-white dark:bg-stone-800 m-5">
