@@ -13,7 +13,7 @@ import (
  * Types
  */
 type MPVQuery struct {
-	Command []interface{} `json:"command"`
+	Command []any `json:"command"`
 }
 
 type MPVQueryString struct {
@@ -114,7 +114,7 @@ func (mpv *MPV) getCmd(cmd []string) ([]byte, error) {
 	return mpv.unixMsg(jsonData)
 }
 
-func (mpv *MPV) setCmd(cmd []interface{}) ([]byte, error) {
+func (mpv *MPV) setCmd(cmd []any) ([]byte, error) {
 	query := MPVQuery{Command: cmd}
 	jsonData, err := json.Marshal(query)
 	if err != nil {

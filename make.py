@@ -96,6 +96,7 @@ def dev_compiled():
 
 def fmt():
     """Format this repo"""
+    run("go -C backend fix ./...")
     run("find backend -name '*.go' -print0 | xargs -0 gofmt -w -s")
     run("bun i")
     run("bun run oxfmt")
@@ -103,6 +104,11 @@ def fmt():
     run("uv run ruff format")
     run("uv run ruff check --fix")
     run("cd backend && go mod tidy")
+
+
+def go_fix():
+    """Run go fix on the Go backend"""
+    run("go -C backend fix ./...")
 
 
 def go_source_hash():
@@ -214,7 +220,21 @@ def _source_hash():
     return sha.hexdigest()
 
 
-TASKS = {"build_go_ci": build_go_ci, "build_go": build_go, "build": build, "bump_version": bump_version, "dev_compiled": dev_compiled, "dev": dev, "fmt": fmt, "build_frontend": build_frontend, "go_source_hash": go_source_hash, "lint": lint, "set_go_version": set_go_version, "test": test}
+TASKS = {
+    "build_go_ci": build_go_ci,
+    "build_go": build_go,
+    "build": build,
+    "bump_version": bump_version,
+    "dev_compiled": dev_compiled,
+    "dev": dev,
+    "fmt": fmt,
+    "build_frontend": build_frontend,
+    "go_fix": go_fix,
+    "go_source_hash": go_source_hash,
+    "lint": lint,
+    "set_go_version": set_go_version,
+    "test": test,
+}
 
 
 def main():
