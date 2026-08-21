@@ -139,6 +139,7 @@ def lint():
     if not git_status_clean():
         log.error("git status is not clean after go fix")
 
+
 def test():
     """Run Go tests"""
     run("go test -C backend ./...")
