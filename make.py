@@ -103,7 +103,7 @@ def fmt():
     run("bun run oxlint --fix-dangerously")
     run("uv run ruff format")
     run("uv run ruff check --fix")
-    run("cd backend && go mod tidy")
+    run("go -C backend mod tidy")
 
 
 def go_source_hash():
@@ -127,15 +127,17 @@ def lint():
     run("bun run oxlint")
     run("uv run ruff format --check")
     run("uv run ruff check")
-    # run go mod tidy and make sure git status is clean after
-    run("cd backend && go mod tidy")
+    # run go mod tidy / go fix and make sure git status is clean after
+    run("go -C backend mod tidy")
     if not git_status_clean():
         if git_status:
-            log.error("git status is not clean after go mod tidy.")
+            log.error("git status is not clean after go mod tidy")
         else:
             log.error("git status is not clean.")
         sys.exit(1)
-
+    run("go -C backend fix ./...")
+    if not git_status_clean():
+        log.error("git status is not clean after go fix")
 
 def test():
     """Run Go tests"""
