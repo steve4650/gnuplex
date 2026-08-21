@@ -106,11 +106,6 @@ def fmt():
     run("cd backend && go mod tidy")
 
 
-def go_fix():
-    """Run go fix on the Go backend"""
-    run("go -C backend fix ./...")
-
-
 def go_source_hash():
     """Prints a unique hash for the repo's current source code"""
     print(_source_hash())
@@ -229,7 +224,6 @@ TASKS = {
     "dev": dev,
     "fmt": fmt,
     "build_frontend": build_frontend,
-    "go_fix": go_fix,
     "go_source_hash": go_source_hash,
     "lint": lint,
     "set_go_version": set_go_version,
