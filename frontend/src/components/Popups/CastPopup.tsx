@@ -1,6 +1,7 @@
 import { useState } from "react";
 import "./Popup.css";
 import { API } from "../../lib/API";
+import { useEscapeKey } from "../../lib/useEscapeKey";
 
 function CastPopup(props: {
   visible: boolean;
@@ -9,6 +10,11 @@ function CastPopup(props: {
 }) {
   const [url, setUrl] = useState("");
   const [addToLib, setAddToLib] = useState(false);
+
+  useEscapeKey(() => {
+    props.closeHook();
+    props.setCastPopup(false);
+  }, props.visible);
   if (props.visible) {
     return (
       <div className="popup bg-white dark:bg-stone-800 m-5">

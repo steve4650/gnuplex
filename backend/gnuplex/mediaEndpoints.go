@@ -72,7 +72,7 @@ func (gnuplex *GNUPlex) processScanLibBatch(batch []models.MediaItem, lastScanUU
 	return gnuplex.DB.ORM.
 		Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "path"}},
-			DoUpdates: clause.Assignments(map[string]interface{}{"last_scan_uuid": lastScanUUID}),
+			DoUpdates: clause.Assignments(map[string]any{"last_scan_uuid": lastScanUUID}),
 		}).
 		CreateInBatches(batch, 100).Error
 }

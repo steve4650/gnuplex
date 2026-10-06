@@ -44,15 +44,6 @@ function App() {
   const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
   useEffect(() => {
-    // Escape key to quit out of windows
-    window.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        setCastPopupVisible(false);
-        setScreenshotPopupVisible(false);
-        setQueueingTargetMediaItem(null);
-        setSettingsPopupVisible(false);
-      }
-    });
     // Poll media player state from the backend
     window.setInterval(async () => {
       const res = await API.getNowPlaying();
