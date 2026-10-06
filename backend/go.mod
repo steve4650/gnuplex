@@ -1,6 +1,6 @@
 module gnuplex
 
-go 1.27.0
+go 1.27.1
 
 require (
 	github.com/asticode/go-astisub v0.42.0
