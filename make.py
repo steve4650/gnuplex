@@ -8,6 +8,14 @@ import sys
 import time
 from pathlib import Path
 
+import pygit2
+import structlog
+
+log = structlog.get_logger()
+from rich.traceback import install
+
+install(show_locals=True)
+
 
 def build():
     """Build the frontend and the backend"""
@@ -88,12 +96,14 @@ def dev_compiled():
 
 def fmt():
     """Format this repo"""
+    run("go -C backend fix ./...")
     run("find backend -name '*.go' -print0 | xargs -0 gofmt -w -s")
     run("bun i")
     run("bun run oxfmt")
     run("bun run oxlint --fix-dangerously")
     run("uv run ruff format")
     run("uv run ruff check --fix")
+    run("go -C backend mod tidy")
 
 
 def go_source_hash():
@@ -107,12 +117,27 @@ def go_version():
 
 def lint():
     """Lint this repo"""
-    run("gofmt -s -d backend | wc -l | xargs uv run python3 -c 'import sys; sys.exit(1 if int(sys.argv[1])>0 else 0)'")
+    git_status = git_status_clean()
+    golint_out = run_stdout("gofmt -s -d backend", should_log=True)
+    if len(golint_out) > 0:
+        log.error("go lint failed. run ./make.py fmt to fix.")
+        sys.exit(1)
     run("bun i")
     run("bun run oxfmt --check")
     run("bun run oxlint")
     run("uv run ruff format --check")
     run("uv run ruff check")
+    # run go mod tidy / go fix and make sure git status is clean after
+    run("go -C backend mod tidy")
+    if not git_status_clean():
+        if git_status:
+            log.error("git status is not clean after go mod tidy")
+        else:
+            log.error("git status is not clean.")
+        sys.exit(1)
+    run("go -C backend fix ./...")
+    if not git_status_clean():
+        log.error("git status is not clean after go fix")
 
 
 def test():
@@ -121,9 +146,9 @@ def test():
 
 
 def platform():
-    os = subprocess.check_output("uname -s", shell=True).decode().strip()
-    arch = subprocess.check_output("uname -m", shell=True).decode().strip()
-    libc = "musl" if "musl" in subprocess.check_output("ldd /bin/ls", shell=True).decode().strip() else "glibc"
+    os = run_stdout("uname -s")
+    arch = run_stdout("uname -m")
+    libc = "musl" if "musl" in run_stdout("ldd /bin/ls") else "glibc"
     return f"{os}-{libc}-{arch}".lower()
 
 
@@ -137,11 +162,23 @@ def remove_sockets():
 
 
 def run(cmd, **kwargs):
-    print(f"+ {cmd}")
+    log.info(f"+ {cmd}")
     res = subprocess.run(cmd, shell=True, check=True, **kwargs)
     if res.returncode != 0:
-        print("cmd failed. exiting...")
+        log.error("cmd failed. exiting...")
         sys.exit(res.returncode)
+
+
+def run_stdout(cmd, error_status_ok=True, should_log=False):
+    if should_log:
+        log.info(f"+ {cmd}")
+    try:
+        return subprocess.check_output(cmd, shell=True).decode().strip()
+    except subprocess.CalledProcessError as e:
+        if error_status_ok:
+            return e.output.decode().strip()
+        log.error(f"cmd failed: {e.output.decode().strip()}")
+        sys.exit(e.returncode)
 
 
 def set_go_version():
@@ -163,6 +200,13 @@ def set_go_version():
     run(f'sed -E -i -e "s/^go [0-9]+\\.[0-9]+\\.[0-9]+$/go {version}/" backend/go.mod')
 
 
+def git_status_clean():
+    """Check if the git status is clean"""
+    repo = pygit2.Repository(Path(__file__).parent)
+    status = repo.status()
+    return len(status) == 0
+
+
 def _source_hash():
     backend = Path(__file__).parent / "backend"
     files = sorted(backend.rglob("*.go"))
@@ -174,7 +218,20 @@ def _source_hash():
     return sha.hexdigest()
 
 
-TASKS = {"build_go_ci": build_go_ci, "build_go": build_go, "build": build, "bump_version": bump_version, "dev_compiled": dev_compiled, "dev": dev, "fmt": fmt, "build_frontend": build_frontend, "go_source_hash": go_source_hash, "lint": lint, "set_go_version": set_go_version, "test": test}
+TASKS = {
+    "build_go_ci": build_go_ci,
+    "build_go": build_go,
+    "build": build,
+    "bump_version": bump_version,
+    "dev_compiled": dev_compiled,
+    "dev": dev,
+    "fmt": fmt,
+    "build_frontend": build_frontend,
+    "go_source_hash": go_source_hash,
+    "lint": lint,
+    "set_go_version": set_go_version,
+    "test": test,
+}
 
 
 def main():
