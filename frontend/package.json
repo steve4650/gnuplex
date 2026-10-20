@@ -5,24 +5,24 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsrs && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.3.3",
     "@tailwindcss/vite": "^4.3.3",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "autoprefixer": "^10.6.1",
-    "daisyui": "^5.7.47",
-    "postcss": "^8.5.29",
+    "daisyui": "^5.7.50",
+    "postcss": "^8.5.31",
     "tailwindcss": "^4.3.3",
-    "typescript": "^7.0.2",
-    "vite": "^8.3.2"
+    "tsrs": "^0.18.0-ts7.1.0-dev.20260929",
+    "vite": "^8.3.4"
   }
 }
