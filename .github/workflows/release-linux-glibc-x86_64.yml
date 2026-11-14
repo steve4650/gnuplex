@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - "backend/consts/version.go"
+      - "backend2/src/consts.rs"
 
 jobs:
   update-release-linux-glibc-x86_64:
@@ -23,11 +23,12 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - name: setup go
-        uses: actions/setup-go@v6
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
         with:
-          go-version: "^1.27.1"
-          cache-dependency-path: backend/go.sum
+          workspaces: backend2
       - name: merge main into release
         run: |
           git remote set-url origin git@github.com:steve4650/gnuplex.git
@@ -42,8 +43,9 @@ jobs:
         run: |
           umask 077
           echo "${{ secrets.GNUPLEX_DEPLOY }}" >/tmp/gnuplex-deploy
-          version_output=$(./backend/bin/gnuplex -version)
+          version_output=$(./backend2/bin/gnuplex -version)
           git add .
+          git add -f backend2/bin backend2/static
           git commit -m "$version_output"
           GIT_SSH_COMMAND="ssh -i /tmp/gnuplex-deploy" git push origin release-linux-glibc-x86_64
           rm /tmp/gnuplex-deploy

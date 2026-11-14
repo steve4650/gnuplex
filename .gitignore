@@ -4,6 +4,10 @@ backend/gnuplex-backend
 backend/gnuplex.sqlite3
 backend/public/*
 backend/static/*
+backend2/bin/gnuplex
+backend2/gnuplex.sqlite3
+backend2/static/*
+backend2/target
 .bundle
 gnuplex.sqlite3
 node_modules

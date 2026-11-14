@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Restart=always
-WorkingDirectory=__DIR__/gnuplex-code/backend
+WorkingDirectory=__DIR__/gnuplex-code/backend2
 ExecStart=__DIR__/gnuplex
 
 [Install]
