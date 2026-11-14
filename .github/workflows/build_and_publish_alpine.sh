@@ -28,9 +28,9 @@ git pull origin release-linux-musl-x86_64
 git merge main -X theirs --allow-unrelated-histories
 
 uv run make.py build
-version_output=$(./backend2/bin/gnuplex -version)
+version_output=$(./backend/bin/gnuplex -version)
 git add .
-git add -f backend2/bin backend2/static
+git add -f backend/bin backend/static
 git commit -m "$version_output"
 
 git push origin release-linux-musl-x86_64
