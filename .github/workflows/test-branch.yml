@@ -19,15 +19,18 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - name: setup go
-        uses: actions/setup-go@v6
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@stable
         with:
-          go-version: "^1.27.1"
-          cache-dependency-path: backend/go.sum
-      - name: compile the go backend
+          components: rustfmt, clippy
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend2
+      - name: compile the rust backend
         run: |
-          uv run make.py build_go_ci
-      - name: run go tests
+          uv run make.py build_ci
+      - name: run rust tests
         run: |
           uv run make.py test
       - name: install shellcheck
