@@ -4,8 +4,8 @@ After=network.target
 
 [Service]
 Restart=always
-WorkingDirectory=__DIR__/gnuplex-code/backend2
-ExecStart=__DIR__/gnuplex
+WorkingDirectory=__DIR__/gnuplex-code/backend
+ExecStart=__DIR__/gnuplex -static_files ../backend2/static -config_dir ../backend2/mpv_config
 
 [Install]
 WantedBy=default.target

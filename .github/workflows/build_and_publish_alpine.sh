@@ -5,7 +5,7 @@ set -x
 umask 077
 echo "$1" >/tmp/gnuplex-deploy
 
-apk add uv git curl bash openssh gcc musl-dev libstdc++ unzip
+apk add uv git curl bash openssh gcc musl-dev libstdc++ unzip xz
 
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |
   sh -s -- -y --profile minimal --default-toolchain stable
