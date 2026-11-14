@@ -1,3 +1,278 @@
+mod consts;
+mod db;
+mod gnuplex;
+mod gotime;
+mod models;
+mod mpv;
+mod screenshots;
+mod subtitles;
+mod upgrade;
+mod web;
+
+use std::ffi::OsString;
+use std::process::exit;
+use std::sync::Arc;
+
+use chrono::{Local, Timelike};
+use clap::{ArgAction, Parser, ValueHint};
+use tokio::sync::watch;
+
+use crate::db::Db;
+use crate::gnuplex::Gnuplex;
+use crate::mpv::Mpv;
+use crate::web::{AppState, router};
+
+#[derive(Debug, Parser)]
+#[command(name = "gnuplex", disable_version_flag = true)]
+struct Args {
+    /// Run in prod mode.
+    #[arg(
+        long,
+        num_args = 0..=1,
+        default_missing_value = "true",
+        default_value_t = false,
+        value_parser = clap::builder::BoolishValueParser::new(),
+        action = ArgAction::Set
+    )]
+    prod: bool,
+    /// Verbose logging.
+    #[arg(
+        long,
+        num_args = 0..=1,
+        default_missing_value = "true",
+        default_value_t = false,
+        value_parser = clap::builder::BoolishValueParser::new(),
+        action = ArgAction::Set
+    )]
+    verbose: bool,
+    /// Print version info.
+    #[arg(
+        long,
+        num_args = 0..=1,
+        default_missing_value = "true",
+        default_value_t = false,
+        value_parser = clap::builder::BoolishValueParser::new(),
+        action = ArgAction::Set
+    )]
+    version: bool,
+    /// Path to sqlite DB.
+    #[arg(long = "db_path", default_value = "gnuplex.sqlite3", value_hint = ValueHint::FilePath)]
+    db_path: String,
+    /// HTTP server's port.
+    #[arg(long, default_value_t = 40000)]
+    port: i64,
+    /// Upgrade GNUPlex.
+    #[arg(
+        long,
+        num_args = 0..=1,
+        default_missing_value = "true",
+        default_value_t = false,
+        value_parser = clap::builder::BoolishValueParser::new(),
+        action = ArgAction::Set
+    )]
+    upgrade: bool,
+    /// Directory containing config files and Lua scripts for mpv.
+    #[arg(
+        long = "config_dir",
+        default_value = "./mpv_config",
+        value_hint = ValueHint::DirPath
+    )]
+    config_dir: String,
+    /// Path to static web files.
+    #[arg(
+        long = "static_files",
+        default_value = "static",
+        value_hint = ValueHint::DirPath
+    )]
+    static_files: String,
+}
+
 fn main() {
-    println!("Hello, world!");
+    let args = parse_args();
+    let exe = std::env::current_exe()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    if args.upgrade {
+        if let Err(err) = upgrade::upgrade_gnuplex(&exe, true) {
+            eprintln!("7a7233a9-262a-4bf6-8229-43855d3852d2 Could not upgrade GNUPlex: {err}");
+            exit(1);
+        }
+        exit(0);
+    }
+    if args.version {
+        print_version();
+        exit(0);
+    }
+    if std::fs::read_dir(&args.config_dir).is_err() {
+        eprintln!(
+            "a895ec8b-8a76-48e9-a20e-3a7d562a10ca Could not read the -mpv_config directory {}",
+            args.config_dir
+        );
+        exit(1);
+    }
+    println!("GNUPlex Version {}", consts::VERSION);
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("failed to start tokio runtime");
+    runtime.block_on(async_main(args, exe));
+}
+
+async fn async_main(args: Args, exe: String) {
+    let verbose = !args.prod || args.verbose;
+    let screenshots_dir = screenshots::screenshots_dir(&args.static_files);
+    if let Err(err) = std::fs::create_dir_all(&screenshots_dir) {
+        eprintln!("failed to create screenshots directory: {err}");
+        exit(1);
+    }
+    let mpv = match Mpv::init(verbose, &args.config_dir) {
+        Ok(mpv) => mpv,
+        Err(err) => {
+            eprintln!("{err}");
+            exit(1);
+        }
+    };
+    let db = match Db::init(&args.db_path, verbose) {
+        Ok(db) => db,
+        Err(err) => {
+            eprintln!("{err}");
+            exit(1);
+        }
+    };
+    let gnuplex = Arc::new(Gnuplex::new(
+        db,
+        Arc::clone(&mpv),
+        screenshots_dir,
+        std::path::PathBuf::from(&args.static_files),
+        exe,
+    ));
+    let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
+    mpv.spawn_supervisor(shutdown_tx.clone());
+
+    let state = Arc::new(AppState {
+        gnuplex: Arc::clone(&gnuplex),
+        exe: gnuplex.exe.clone(),
+        shutdown: shutdown_tx.clone(),
+    });
+    let app = router(state);
+    let bind_addr = format!("0.0.0.0:{}", args.port);
+    let listener = match tokio::net::TcpListener::bind(&bind_addr).await {
+        Ok(listener) => listener,
+        Err(err) => {
+            eprintln!("e6c1f9ee-681d-4eb4-b487-d86622e07aac Server error: {err}");
+            exit(1);
+        }
+    };
+
+    tokio::spawn(scheduler(Arc::clone(&gnuplex), shutdown_tx.clone()));
+
+    let shutdown = async move {
+        while !*shutdown_rx.borrow() {
+            if shutdown_rx.changed().await.is_err() {
+                break;
+            }
+        }
+    };
+    if let Err(err) = axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown)
+        .await
+    {
+        eprintln!("e6c1f9ee-681d-4eb4-b487-d86622e07aac Server error: {err}");
+    }
+}
+
+async fn scheduler(gnuplex: Arc<Gnuplex>, shutdown: watch::Sender<bool>) {
+    let mut last_scan = None;
+    let mut last_update = None;
+    loop {
+        let now = Local::now();
+        let date = now.date_naive();
+        if now.hour() == 1 && now.minute() == 15 && last_scan != Some(date) {
+            last_scan = Some(date);
+            println!("running ScanLib job");
+            if let Err(err) = gnuplex.scan_lib() {
+                println!("scanlib job failed: {err}");
+            }
+        }
+        if now.hour() == 2 && now.minute() == 15 && last_update != Some(date) {
+            last_update = Some(date);
+            println!("Running update job");
+            match gnuplex.get_now_playing() {
+                Ok(Some(paths)) => {
+                    if !paths.is_empty() {
+                        println!(
+                            "a3b99261-331c-4484-a9fb-358b66f364f2 Not updating; something is playing"
+                        );
+                    }
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    println!(
+                        "857034c0-a7db-4aa8-8cdf-00d0b6d811c2 Failed to retrive NowPlaying: {err}"
+                    );
+                    continue;
+                }
+            }
+            match upgrade::upgrade_gnuplex(&gnuplex.exe, false) {
+                Ok(true) => {
+                    println!("Updated GNUPlex. Quitting");
+                    let _ = shutdown.send(true);
+                }
+                Ok(false) => {}
+                Err(err) => println!("upgrade job failed: {err}"),
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+    }
+}
+
+fn print_version() {
+    let info = models::VersionInfo {
+        version: consts::VERSION.to_string(),
+        source_hash: consts::SOURCE_HASH.to_string(),
+        platform: consts::PLATFORM.to_string(),
+        go_version: consts::COMPILER_VERSION.to_string(),
+    };
+    match gotime::to_go_json(&info) {
+        Ok(json) => println!("{}", String::from_utf8_lossy(&json)),
+        Err(_) => {
+            eprintln!("678f5d62-8c22-42bc-b25a-c5903b533312 failed to turn version info into JSON");
+            exit(1);
+        }
+    }
+}
+
+fn parse_args() -> Args {
+    // Go's flag package accepts both `-flag` and `--flag`. clap only treats
+    // `--flag` as a long option, so normalize the historical single-dash form
+    // before handing the arguments to clap.
+    let argv: Vec<OsString> = std::env::args_os().map(normalize_flag).collect();
+    Args::parse_from(argv)
+}
+
+fn normalize_flag(arg: OsString) -> OsString {
+    const LONG_FLAGS: &[&str] = &[
+        "prod",
+        "verbose",
+        "version",
+        "db_path",
+        "port",
+        "upgrade",
+        "config_dir",
+        "static_files",
+    ];
+    let Some(text) = arg.to_str() else {
+        return arg;
+    };
+    if !text.starts_with('-') || text.starts_with("--") || text == "-" {
+        return arg;
+    }
+    let name = text[1..].split('=').next().unwrap_or_default();
+    if LONG_FLAGS.contains(&name) {
+        OsString::from(format!("-{text}"))
+    } else {
+        arg
+    }
 }
