@@ -135,7 +135,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "backend2"
+name = "backend"
 version = "0.1.0"
 dependencies = [
  "axum",

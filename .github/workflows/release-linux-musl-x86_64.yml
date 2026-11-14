@@ -5,7 +5,7 @@ name: Update release-linux-musl-x86_64 on version change
 #    branches:
 #      - main
 #    paths:
-#      - "backend2/src/consts.rs"
+#      - "backend/src/consts.rs"
 
 jobs:
   update-release-linux-musl-x86_64:

@@ -29,11 +29,11 @@ def build_frontend():
     run("bun run --cwd frontend build")
 
 
-def build_backend(target="backend2/bin/gnuplex"):
+def build_backend(target="backend/bin/gnuplex"):
     """Build the Rust backend"""
-    run("cargo build --release --manifest-path backend2/Cargo.toml", env=build_env())
+    run("cargo build --release --manifest-path backend/Cargo.toml", env=build_env())
     os.makedirs(os.path.dirname(target), exist_ok=True)
-    run(f"cp backend2/target/release/gnuplex {target}")
+    run(f"cp backend/target/release/gnuplex {target}")
 
 
 def build_ci():
@@ -44,7 +44,7 @@ def build_ci():
 def bump_version():
     """Bump the version of this repo"""
     ver = str(int(time.time()))
-    run('sed -E -i -e "s/(pub const VERSION: &str = \\")[0-9]+(\\";)/\\1' + ver + '\\2/" backend2/src/consts.rs')
+    run('sed -E -i -e "s/(pub const VERSION: &str = \\")[0-9]+(\\";)/\\1' + ver + '\\2/" backend/src/consts.rs')
 
 
 def dev():
@@ -57,7 +57,7 @@ def dev():
         subprocess.Popen("caddy run", shell=True),
         subprocess.Popen("bun run --cwd frontend dev", shell=True),
         subprocess.Popen(
-            "cargo run --manifest-path backend2/Cargo.toml -- -verbose -static_files ./tmp -config_dir ./backend2/mpv_config",
+            "cargo run --manifest-path backend/Cargo.toml -- -verbose -static_files ./tmp -config_dir ./backend/mpv_config",
             shell=True,
         ),
     ]
@@ -83,7 +83,7 @@ def dev_compiled():
     procs = [
         subprocess.Popen("caddy run --config Caddyfile-compiled", shell=True),
         subprocess.Popen(
-            "./backend2/bin/gnuplex -verbose -static_files ./backend2/static -config_dir ./backend2/mpv_config",
+            "./backend/bin/gnuplex -verbose -static_files ./backend/static -config_dir ./backend/mpv_config",
             shell=True,
         ),
     ]
@@ -103,7 +103,7 @@ def dev_compiled():
 
 def fmt():
     """Format this repo"""
-    run("cargo fmt --manifest-path backend2/Cargo.toml")
+    run("cargo fmt --manifest-path backend/Cargo.toml")
     run("bun i")
     run("bun run oxfmt")
     run("bun run oxlint --fix-dangerously")
@@ -123,11 +123,11 @@ def rust_version():
 def lint():
     """Lint this repo"""
     git_status = git_status_clean()
-    rustfmt_out = run_stdout("cargo fmt --manifest-path backend2/Cargo.toml -- --check", should_log=True)
+    rustfmt_out = run_stdout("cargo fmt --manifest-path backend/Cargo.toml -- --check", should_log=True)
     if len(rustfmt_out) > 0:
         log.error("rust lint failed. run ./make.py fmt to fix.")
         sys.exit(1)
-    run("cargo clippy --manifest-path backend2/Cargo.toml --all-targets -- -D warnings")
+    run("cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings")
     run("bun i")
     run("bun run oxfmt --check")
     run("bun run oxlint")
@@ -143,7 +143,7 @@ def lint():
 
 def test():
     """Run Rust tests"""
-    run("cargo test --manifest-path backend2/Cargo.toml")
+    run("cargo test --manifest-path backend/Cargo.toml")
 
 
 def platform():
@@ -190,7 +190,7 @@ def set_rust_version():
         sys.exit(1)
 
     version = sys.argv[2]
-    run(f'sed -E -i -e "s/^rust-version = \\"[0-9]+\\.[0-9]+\\.[0-9]+\\"$/rust-version = \\"{version}\\"/" backend2/Cargo.toml')
+    run(f'sed -E -i -e "s/^rust-version = \\"[0-9]+\\.[0-9]+\\.[0-9]+\\"$/rust-version = \\"{version}\\"/" backend/Cargo.toml')
 
 
 def git_status_clean():
@@ -201,7 +201,7 @@ def git_status_clean():
 
 
 def _source_hash():
-    backend = Path(__file__).parent / "backend2" / "src"
+    backend = Path(__file__).parent / "backend" / "src"
     files = sorted(backend.rglob("*.rs"))
     sha = hashlib.sha256()
     for f in files:

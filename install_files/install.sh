@@ -38,7 +38,7 @@ fi
 # clone from git
 git clone -b "release-linux-$libc-x86_64" https://github.com/steve4650/gnuplex.git "$install_dir/gnuplex-code"
 cd "$install_dir"
-ln -s gnuplex-code/backend2/bin/gnuplex .
+ln -s gnuplex-code/backend/bin/gnuplex .
 # systemd service
 if command -v journalctl
 then
