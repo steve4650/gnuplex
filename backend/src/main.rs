@@ -140,7 +140,7 @@ async fn async_main(args: Args, exe: String) {
         error!("failed to create screenshots directory: {err}");
         exit(1);
     }
-    let mpv = match Mpv::init(verbose, &args.config_dir) {
+    let mpv = match Mpv::init(verbose, std::path::Path::new(&args.config_dir)) {
         Ok(mpv) => mpv,
         Err(err) => {
             error!("{err}");

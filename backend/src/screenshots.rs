@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 
+use crate::error::{Error, Result};
 use crate::models::Screenshot;
 
 pub fn sanitize_screenshot_source(filename: &str) -> String {
@@ -49,40 +50,39 @@ pub fn take_screenshot(
     mpv: &crate::mpv::Mpv,
     screenshots_dir: &Path,
     now: DateTime<Utc>,
-) -> Result<Screenshot, String> {
+) -> Result<Screenshot> {
     let current_filename = mpv.get_current_filename()?;
     let name = build_screenshot_filename(&current_filename, &now);
     let path = screenshots_dir.join(&name);
-    mpv.screenshot_to_file(path.to_str().unwrap_or_default())?;
-    let metadata = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    let path = path
+        .to_str()
+        .ok_or_else(|| Error::Other(format!("non-UTF-8 screenshot path: {}", path.display())))?;
+    mpv.screenshot_to_file(path)?;
+    let metadata = std::fs::metadata(path)?;
     Ok(Screenshot {
         name: name.clone(),
         url: screenshot_url(&name),
-        modified_at: system_time_to_utc(metadata.modified().map_err(|e| e.to_string())?),
+        modified_at: system_time_to_utc(metadata.modified()?),
     })
 }
 
-pub fn list_recent_screenshots(
-    screenshots_dir: &Path,
-    limit: i64,
-) -> Result<Vec<Screenshot>, String> {
-    let entries = std::fs::read_dir(screenshots_dir).map_err(|e| e.to_string())?;
+pub fn list_recent_screenshots(screenshots_dir: &Path, limit: i64) -> Result<Vec<Screenshot>> {
+    let entries = std::fs::read_dir(screenshots_dir)?;
     let mut screenshots = Vec::new();
     for entry in entries {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let file_type = entry.file_type().map_err(|e| e.to_string())?;
-        if file_type.is_dir() {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
             continue;
         }
         let name = entry.file_name().to_string_lossy().to_string();
         if !name.to_lowercase().ends_with(".png") {
             continue;
         }
-        let metadata = entry.metadata().map_err(|e| e.to_string())?;
+        let metadata = entry.metadata()?;
         screenshots.push(Screenshot {
-            url: crate::screenshots::screenshot_url(&name),
+            url: screenshot_url(&name),
             name,
-            modified_at: system_time_to_utc(metadata.modified().map_err(|e| e.to_string())?),
+            modified_at: system_time_to_utc(metadata.modified()?),
         });
     }
     screenshots.sort_by(|a, b| {
