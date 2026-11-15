@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use chrono::Utc;
+use tracing::warn;
 use uuid::Uuid;
 
 use crate::db::Db;
@@ -58,10 +59,10 @@ impl Gnuplex {
                 }
                 Ok(_) => {}
                 Err(err) => {
-                    log(&format!(
+                    warn!(
                         "skipping {} - could not stat this directory: {err}",
                         media_dir.path
-                    ));
+                    );
                 }
             }
         }
@@ -214,10 +215,10 @@ fn walk_dir(dir: &Path, file_ext_h: &HashSet<String>, batch: &mut Vec<String>) {
     let read_dir = match std::fs::read_dir(dir) {
         Ok(read_dir) => read_dir,
         Err(err) => {
-            log(&format!(
+            warn!(
                 "Error 62b2b0e2-25d7-49db-a31a-5785c145229f: file read issue for {}: {err}",
                 dir.display()
-            ));
+            );
             return;
         }
     };
@@ -243,8 +244,4 @@ fn walk_dir(dir: &Path, file_ext_h: &HashSet<String>, batch: &mut Vec<String>) {
             batch.push(path_str);
         }
     }
-}
-
-fn log(message: &str) {
-    println!("{message}");
 }
