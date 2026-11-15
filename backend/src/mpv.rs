@@ -13,11 +13,10 @@ use uuid::Uuid;
 
 use crate::models::{PlaylistEntry, Track};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 struct MpvResponse {
-    #[serde(default)]
     data: Value,
-    #[serde(default)]
     error: String,
 }
 
