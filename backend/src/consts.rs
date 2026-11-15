@@ -1,5 +1,5 @@
-// Build metadata, mirroring backend/consts/version.go and make.py's Go
-// ldflags. The names are kept for API compatibility with existing clients.
+// Build metadata. The names are kept for API compatibility with existing
+// clients.
 //
 // These are compile-time constants baked into the binary by build.rs. The
 // environment is only read while compiling; it cannot override them at

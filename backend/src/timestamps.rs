@@ -21,7 +21,7 @@ pub fn to_db_time(dt: &DateTime<Utc>) -> String {
     dt.to_rfc3339_opts(SecondsFormat::AutoSi, false)
 }
 
-/// Parse timestamps written by this backend or by the old Go/GORM backend.
+/// Parse timestamps written by this backend or by the old Go backend.
 pub fn parse_db_time(s: &str) -> Option<DateTime<Utc>> {
     if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
         return Some(dt.with_timezone(&Utc));

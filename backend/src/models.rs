@@ -7,10 +7,7 @@ pub const MEDIA_TYPE_FILE: i64 = 1;
 pub const MEDIA_TYPE_URL: i64 = 2;
 
 fn queue_id_absent(value: &Option<i64>) -> bool {
-    match value {
-        None | Some(0) => true,
-        Some(_) => false,
-    }
+    value.is_none_or(|id| id == 0)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -113,8 +110,8 @@ pub struct VersionInfo {
 }
 
 /*
- * Request bodies. Go's encoding/json leaves a struct untouched for a JSON
- * `null` body and zeroes absent fields, so these all default every field.
+ * Request bodies. Absent fields use the type's default rather than being
+ * rejected, so older clients that omit newer fields keep working.
  */
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -172,7 +169,7 @@ mod tests {
 
     #[test]
     fn missing_fields_default_to_zero_values() {
-        // Go's encoding/json zeroes absent fields rather than rejecting the body.
+        // Absent fields keep their zero values. Same for mpv responses.
         let body: PlayMediaBody = serde_json::from_str(r#"{"play_next":true}"#).unwrap();
         assert_eq!(body.id, 0);
         assert!(body.play_next);
