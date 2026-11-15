@@ -8,6 +8,7 @@ mod screenshots;
 mod subtitles;
 mod timestamps;
 mod upgrade;
+mod url;
 mod web;
 
 use std::process::exit;
