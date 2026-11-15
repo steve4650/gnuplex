@@ -17,6 +17,40 @@ use crate::subtitles;
 /// does not have to fit in memory all at once.
 const SCAN_BATCH_SIZE: usize = 1000;
 
+/// Buffers discovered paths and writes them to the database in chunks.
+struct ScanBatch<'a> {
+    db: &'a Db,
+    scan_id: &'a str,
+    paths: Vec<String>,
+}
+
+impl<'a> ScanBatch<'a> {
+    fn new(db: &'a Db, scan_id: &'a str) -> Self {
+        Self {
+            db,
+            scan_id,
+            paths: Vec::with_capacity(SCAN_BATCH_SIZE),
+        }
+    }
+
+    fn push(&mut self, path: String) -> Result<()> {
+        self.paths.push(path);
+        if self.paths.len() >= SCAN_BATCH_SIZE {
+            self.flush()?;
+        }
+        Ok(())
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        if !self.paths.is_empty() {
+            self.db
+                .add_media_item_file_batch(&self.paths, self.scan_id)?;
+            self.paths.clear();
+        }
+        Ok(())
+    }
+}
+
 pub struct Gnuplex {
     pub db: Db,
     pub mpv: Arc<Mpv>,
@@ -53,11 +87,11 @@ impl Gnuplex {
             .collect();
 
         let scan_id = Uuid::new_v4().to_string();
-        let mut batch = Vec::new();
+        let mut batch = ScanBatch::new(&self.db, &scan_id);
         for media_dir in &media_dirs {
             match std::fs::metadata(&media_dir.path) {
                 Ok(metadata) if metadata.is_dir() => {
-                    walk_dir(Path::new(&media_dir.path), &file_extensions, &mut batch);
+                    walk_dir(Path::new(&media_dir.path), &file_extensions, &mut batch)?;
                 }
                 Ok(_) => warn!("skipping {} - not a directory", media_dir.path),
                 Err(err) => warn!(
@@ -65,14 +99,8 @@ impl Gnuplex {
                     media_dir.path
                 ),
             }
-            if batch.len() >= SCAN_BATCH_SIZE {
-                self.db.add_media_item_file_batch(&batch, &scan_id)?;
-                batch.clear();
-            }
         }
-        if !batch.is_empty() {
-            self.db.add_media_item_file_batch(&batch, &scan_id)?;
-        }
+        batch.flush()?;
         self.db.delete_media_item_files_not_matching_uuid(&scan_id)
     }
 
@@ -200,7 +228,11 @@ impl Gnuplex {
     }
 }
 
-fn walk_dir(dir: &Path, file_extensions: &HashSet<String>, batch: &mut Vec<String>) {
+fn walk_dir(
+    dir: &Path,
+    file_extensions: &HashSet<String>,
+    batch: &mut ScanBatch<'_>,
+) -> Result<()> {
     let read_dir = match std::fs::read_dir(dir) {
         Ok(read_dir) => read_dir,
         Err(err) => {
@@ -208,7 +240,7 @@ fn walk_dir(dir: &Path, file_extensions: &HashSet<String>, batch: &mut Vec<Strin
                 "Error 62b2b0e2-25d7-49db-a31a-5785c145229f: file read issue for {}: {err}",
                 dir.display()
             );
-            return;
+            return Ok(());
         }
     };
 
@@ -240,7 +272,7 @@ fn walk_dir(dir: &Path, file_extensions: &HashSet<String>, batch: &mut Vec<Strin
             }
         };
         if is_dir {
-            walk_dir(&path, file_extensions, batch);
+            walk_dir(&path, file_extensions, batch)?;
             continue;
         }
         let extension = path
@@ -249,7 +281,8 @@ fn walk_dir(dir: &Path, file_extensions: &HashSet<String>, batch: &mut Vec<Strin
             .unwrap_or_default()
             .to_lowercase();
         if !file_extensions.contains(&extension) {
-            batch.push(path.to_string_lossy().into_owned());
+            batch.push(path.to_string_lossy().into_owned())?;
         }
     }
+    Ok(())
 }
