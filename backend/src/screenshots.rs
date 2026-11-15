@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 
 use crate::error::{Error, Result};
 use crate::models::Screenshot;
+use crate::url::escape_path_segment;
 
 pub fn sanitize_screenshot_source(filename: &str) -> String {
     let sanitized = filename.replace(['/', '\\'], "_");
@@ -22,28 +23,9 @@ pub fn build_screenshot_filename(filename: &str, now: &DateTime<Utc>) -> String 
     )
 }
 
-/// Equivalent of Go's net/url.PathEscape.
+/// Build the URL clients use to fetch a screenshot.
 pub fn screenshot_url(name: &str) -> String {
-    format!("/screenshots/{}", path_escape(name))
-}
-
-fn path_escape(name: &str) -> String {
-    let mut out = String::with_capacity(name.len());
-    for byte in name.as_bytes() {
-        let b = *byte;
-        let allowed = b.is_ascii_alphanumeric()
-            || matches!(
-                b,
-                b'-' | b'.' | b'_' | b'~' | b'$' | b'&' | b'+' | b',' | b':' | b'=' | b'@'
-            );
-        if allowed {
-            out.push(b as char);
-        } else {
-            out.push('%');
-            out.push_str(&format!("{b:02X}"));
-        }
-    }
-    out
+    format!("/screenshots/{}", escape_path_segment(name))
 }
 
 pub fn take_screenshot(
@@ -109,22 +91,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn screenshot_filename_matches_go() {
+    fn screenshot_filename_matches_expected_format() {
         let now = chrono::TimeZone::with_ymd_and_hms(&Utc, 2026, 3, 29, 14, 5, 6).unwrap();
         assert_eq!(
             build_screenshot_filename("/media/movies/Alien (1979).mkv", &now),
             "2026-03-29-14:05:06._media_movies_Alien (1979).mkv.png"
         );
-    }
-
-    #[test]
-    fn path_escape_matches_go() {
-        assert_eq!(
-            path_escape("2026-03-29-14:05:06._media_movies_Alien (1979).mkv.png"),
-            "2026-03-29-14:05:06._media_movies_Alien%20%281979%29.mkv.png"
-        );
-        assert_eq!(path_escape("a+b&c=d.png"), "a+b&c=d.png");
-        assert_eq!(path_escape("a#b?.png"), "a%23b%3F.png");
-        assert_eq!(path_escape("héllo.png"), "h%C3%A9llo.png");
     }
 }

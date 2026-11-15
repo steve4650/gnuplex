@@ -23,6 +23,7 @@ use crate::models::{
     VolBody,
 };
 use crate::upgrade::upgrade_gnuplex;
+use crate::url::escape_relative_segment;
 
 pub struct AppState {
     pub gnuplex: Arc<Gnuplex>,
@@ -263,9 +264,9 @@ async fn directory_listing(dir: &Path) -> AppResult<String> {
             name.clone()
         };
         let href = if is_dir {
-            format!("{}/", path_escape_component(&name))
+            format!("{}/", escape_relative_segment(&name))
         } else {
-            path_escape_component(&name)
+            escape_relative_segment(&name)
         };
         body.push_str(&format!(
             "<a href=\"{}\">{}</a>\n",
@@ -287,31 +288,6 @@ fn html_escape(value: &str) -> String {
             '"' => out.push_str("&#34;"),
             '\'' => out.push_str("&#39;"),
             _ => out.push(ch),
-        }
-    }
-    out
-}
-
-/// Escape a single URL path segment the way net/url.PathEscape does.
-fn path_escape_component(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    // url.URL.String prefixes a relative path with "./" when its first segment
-    // contains a colon, so it cannot be mistaken for a scheme.
-    if value.contains(':') {
-        out.push_str("./");
-    }
-    for byte in value.as_bytes() {
-        let b = *byte;
-        let allowed = b.is_ascii_alphanumeric()
-            || matches!(
-                b,
-                b'-' | b'.' | b'_' | b'~' | b'$' | b'&' | b'+' | b',' | b';' | b':' | b'=' | b'@'
-            );
-        if allowed {
-            out.push(b as char);
-        } else {
-            out.push('%');
-            out.push_str(&format!("{b:02X}"));
         }
     }
     out
