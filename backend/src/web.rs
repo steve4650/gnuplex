@@ -27,7 +27,6 @@ use crate::url::escape_relative_segment;
 
 pub struct AppState {
     pub gnuplex: Arc<Gnuplex>,
-    pub exe: std::path::PathBuf,
     pub shutdown: watch::Sender<bool>,
 }
 
@@ -490,7 +489,7 @@ async fn api_sub_save(State(state): State<SharedState>) -> AppResult<StatusCode>
 }
 
 async fn api_upgrade(State(state): State<SharedState>) -> AppResult<StatusCode> {
-    let exe = state.exe.clone();
+    let exe = state.gnuplex.exe.clone();
     if run_blocking(move || upgrade_gnuplex(&exe, false)).await? {
         info!("Upgraded and going into shutdown");
         let _ = state.shutdown.send(true);

@@ -38,7 +38,7 @@ pub fn take_screenshot(
     let path = screenshots_dir.join(&name);
     let path = path
         .to_str()
-        .ok_or_else(|| Error::Other(format!("non-UTF-8 screenshot path: {}", path.display())))?;
+        .ok_or_else(|| Error::NonUtf8Path(path.to_path_buf()))?;
     mpv.screenshot_to_file(path)?;
     let metadata = std::fs::metadata(path)?;
     Ok(Screenshot {
@@ -82,8 +82,8 @@ pub fn system_time_to_utc(time: std::time::SystemTime) -> DateTime<Utc> {
     DateTime::from(time)
 }
 
-pub fn screenshots_dir(static_files: &str) -> PathBuf {
-    Path::new(static_files).join("screenshots")
+pub fn screenshots_dir(static_files: &Path) -> PathBuf {
+    static_files.join("screenshots")
 }
 
 #[cfg(test)]

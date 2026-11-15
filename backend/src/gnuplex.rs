@@ -214,7 +214,7 @@ impl Gnuplex {
         if filename.is_empty() {
             return Ok(());
         }
-        subtitles::shift_subtitle_file(&filename, -delay)?;
+        subtitles::shift_subtitle_file(Path::new(&filename), -delay)?;
         self.mpv.sub_reload()?;
         self.mpv.set_sub_delay(0.0)
     }

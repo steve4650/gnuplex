@@ -4,7 +4,6 @@ use std::io;
 /// their source and can be handled by variant rather than by matching text.
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-#[allow(dead_code)] // variants are introduced incrementally as modules adopt this type
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("database error: {0}")]
@@ -41,6 +40,6 @@ pub enum Error {
     #[error("background task failed: {0}")]
     Task(String),
 
-    #[error("{0}")]
-    Other(String),
+    #[error("path is not valid UTF-8: {0}")]
+    NonUtf8Path(std::path::PathBuf),
 }

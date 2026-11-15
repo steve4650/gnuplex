@@ -11,11 +11,12 @@ mod upgrade;
 mod url;
 mod web;
 
+use std::path::PathBuf;
 use std::process::exit;
 use std::sync::Arc;
 
 use chrono::{Local, Timelike};
-use clap::{ArgAction, Parser, ValueHint};
+use clap::{Parser, ValueHint};
 use tokio::sync::watch;
 use tracing::{Level, error, info, warn};
 
@@ -28,57 +29,29 @@ use crate::web::{AppState, router};
 #[command(name = "gnuplex", disable_version_flag = true)]
 struct Args {
     /// Run in prod mode.
-    #[arg(
-        long,
-        num_args = 0..=1,
-        default_missing_value = "true",
-        default_value_t = false,
-        value_parser = clap::builder::BoolishValueParser::new(),
-        action = ArgAction::Set
-    )]
+    #[arg(long)]
     prod: bool,
     /// Verbose logging.
-    #[arg(
-        long,
-        num_args = 0..=1,
-        default_missing_value = "true",
-        default_value_t = false,
-        value_parser = clap::builder::BoolishValueParser::new(),
-        action = ArgAction::Set
-    )]
+    #[arg(long)]
     verbose: bool,
     /// Print version info.
-    #[arg(
-        long,
-        num_args = 0..=1,
-        default_missing_value = "true",
-        default_value_t = false,
-        value_parser = clap::builder::BoolishValueParser::new(),
-        action = ArgAction::Set
-    )]
+    #[arg(long)]
     version: bool,
     /// Path to sqlite DB.
     #[arg(long, default_value = "gnuplex.sqlite3", value_hint = ValueHint::FilePath)]
-    db_path: String,
+    db_path: PathBuf,
     /// HTTP server's port.
     #[arg(long, default_value_t = 40000)]
-    port: i64,
+    port: u16,
     /// Upgrade GNUPlex.
-    #[arg(
-        long,
-        num_args = 0..=1,
-        default_missing_value = "true",
-        default_value_t = false,
-        value_parser = clap::builder::BoolishValueParser::new(),
-        action = ArgAction::Set
-    )]
+    #[arg(long)]
     upgrade: bool,
     /// Directory containing config files and Lua scripts for mpv.
     #[arg(long, default_value = "./mpv_config", value_hint = ValueHint::DirPath)]
-    config_dir: String,
+    config_dir: PathBuf,
     /// Path to static web files.
     #[arg(long, default_value = "static", value_hint = ValueHint::DirPath)]
-    static_files: String,
+    static_files: PathBuf,
 }
 
 #[tokio::main]
@@ -101,7 +74,7 @@ async fn main() {
     if std::fs::read_dir(&args.config_dir).is_err() {
         error!(
             "a895ec8b-8a76-48e9-a20e-3a7d562a10ca Could not read the --config-dir directory {}",
-            args.config_dir
+            args.config_dir.display()
         );
         exit(1);
     }
@@ -120,14 +93,14 @@ fn init_logging(verbose: bool) {
         .init();
 }
 
-async fn run(args: Args, exe: std::path::PathBuf) {
+async fn run(args: Args, exe: PathBuf) {
     let verbose = !args.prod || args.verbose;
     let screenshots_dir = screenshots::screenshots_dir(&args.static_files);
     if let Err(err) = std::fs::create_dir_all(&screenshots_dir) {
         error!("failed to create screenshots directory: {err}");
         exit(1);
     }
-    let mpv = match Mpv::init(verbose, std::path::Path::new(&args.config_dir)) {
+    let mpv = match Mpv::init(verbose, &args.config_dir) {
         Ok(mpv) => mpv,
         Err(err) => {
             error!("{err}");
@@ -145,7 +118,7 @@ async fn run(args: Args, exe: std::path::PathBuf) {
         db,
         Arc::clone(&mpv),
         screenshots_dir,
-        std::path::PathBuf::from(&args.static_files),
+        args.static_files.clone(),
         exe,
     ));
     let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
@@ -153,7 +126,6 @@ async fn run(args: Args, exe: std::path::PathBuf) {
 
     let state = Arc::new(AppState {
         gnuplex: Arc::clone(&gnuplex),
-        exe: gnuplex.exe.clone(),
         shutdown: shutdown_tx.clone(),
     });
     let app = router(state);
