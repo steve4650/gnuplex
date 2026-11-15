@@ -5,14 +5,14 @@ use std::time::Instant;
 use axum::Json;
 use axum::Router;
 use axum::body::{Body, HttpBody};
-use axum::extract::{Path as AxumPath, Query, Request, State};
+use axum::extract::{Query, Request, State};
 use axum::http::{HeaderMap, HeaderName, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
-use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use tokio::sync::watch;
+use tower_http::services::ServeDir;
 use tracing::{Level, debug, enabled, error, info};
 
 use crate::consts;
@@ -46,15 +46,17 @@ struct ScreenshotsQuery {
 }
 
 pub fn router(state: SharedState) -> Router {
+    let home = Router::<SharedState>::new()
+        .fallback_service(ServeDir::new(state.gnuplex.static_files.clone()));
+    let screenshots = Router::<SharedState>::new()
+        .route("/", get(screenshots_index))
+        .fallback_service(ServeDir::new(state.gnuplex.screenshots_dir.clone()));
+
     Router::new()
         .route("/", get(root_redirect))
         .route("/gnuplex", get(root_redirect))
-        .route("/home", get(home_redirect))
-        .route("/home/", get(home_index))
-        .route("/home/{*path}", get(home_file))
-        .route("/screenshots", get(screenshots_redirect))
-        .route("/screenshots/", get(screenshots_index))
-        .route("/screenshots/{*path}", get(screenshots_file))
+        .nest("/home", home)
+        .nest("/screenshots", screenshots)
         .route("/api/version", get(api_version))
         .route("/api/play", post(api_play))
         .route("/api/pause", post(api_pause))
@@ -160,10 +162,6 @@ fn html_response(status: StatusCode, html: String) -> Response {
     response(status, Some("text/html; charset=utf-8"), html.into_bytes())
 }
 
-fn empty_response(status: StatusCode) -> Response {
-    response(status, None, Vec::new())
-}
-
 fn response(status: StatusCode, content_type: Option<&str>, body: Vec<u8>) -> Response {
     let mut builder = Response::builder().status(status);
     if let Some(content_type) = content_type {
@@ -210,128 +208,25 @@ async fn root_redirect() -> Response {
     redirect("/home")
 }
 
-async fn home_redirect() -> Response {
-    redirect("/home/")
+async fn screenshots_index(State(state): State<SharedState>) -> AppResult<Response> {
+    let body = directory_listing(&state.gnuplex.screenshots_dir).await?;
+    Ok(html_response(StatusCode::OK, body))
 }
 
-async fn screenshots_redirect() -> Response {
-    redirect("/screenshots/")
-}
-
-async fn home_index(State(state): State<SharedState>) -> Response {
-    serve_static(&state, "", false)
-}
-
-async fn home_file(State(state): State<SharedState>, AxumPath(path): AxumPath<String>) -> Response {
-    serve_static(&state, &path, false)
-}
-
-async fn screenshots_index(State(state): State<SharedState>) -> Response {
-    serve_static_screenshots(&state, "")
-}
-
-async fn screenshots_file(
-    State(state): State<SharedState>,
-    AxumPath(path): AxumPath<String>,
-) -> Response {
-    serve_static_screenshots(&state, &path)
-}
-
-fn serve_static(state: &SharedState, relative: &str, list_dirs: bool) -> Response {
-    serve_dir(&state.gnuplex.static_files, relative, list_dirs)
-}
-
-fn serve_static_screenshots(state: &SharedState, relative: &str) -> Response {
-    serve_dir(&state.gnuplex.screenshots_dir, relative, true)
-}
-
-fn serve_dir(root: &Path, relative: &str, list_dirs: bool) -> Response {
-    let relative = percent_decode(relative, false);
-    if relative
-        .split('/')
-        .any(|component| component == ".." || component == "." && relative != ".")
-    {
-        return empty_response(StatusCode::NOT_FOUND);
+async fn directory_listing(dir: &Path) -> AppResult<String> {
+    let mut entries = Vec::new();
+    let mut read_dir = tokio::fs::read_dir(dir).await?;
+    while let Some(entry) = read_dir.next_entry().await? {
+        entries.push(entry);
     }
-    let path = root.join(relative.trim_start_matches('/'));
-    let metadata = match std::fs::metadata(&path) {
-        Ok(metadata) => metadata,
-        Err(_) => return empty_response(StatusCode::NOT_FOUND),
-    };
-    if metadata.is_dir() {
-        if !relative.is_empty() && !relative.ends_with('/') {
-            // This is net/http's localRedirect: a relative Location header and
-            // no response body.
-            let base = relative.rsplit('/').next().unwrap_or("");
-            let mut response = empty_response(StatusCode::MOVED_PERMANENTLY);
-            response.headers_mut().insert(
-                header::LOCATION,
-                format!("{base}/")
-                    .parse()
-                    .unwrap_or_else(|_| "/".parse().unwrap()),
-            );
-            return response;
-        }
-        let index = path.join("index.html");
-        if let Ok(index_metadata) = std::fs::metadata(&index)
-            && index_metadata.is_file()
-        {
-            return serve_file(&index, index_metadata);
-        }
-        let status = if list_dirs {
-            StatusCode::OK
-        } else {
-            StatusCode::NOT_FOUND
-        };
-        let mut response = html_response(status, directory_listing(&path, list_dirs));
-        if let Ok(modified) = metadata.modified() {
-            response.headers_mut().insert(
-                header::LAST_MODIFIED,
-                http_date(modified.into()).parse().unwrap(),
-            );
-        }
-        return response;
-    }
-    serve_file(&path, metadata)
-}
+    entries.sort_by_key(|entry| entry.file_name());
 
-fn serve_file(path: &Path, metadata: std::fs::Metadata) -> Response {
-    let bytes = match std::fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(_) => return empty_response(StatusCode::NOT_FOUND),
-    };
-    let content_type = mime_type(path);
-    let mut response = response(StatusCode::OK, Some(content_type), bytes);
-    if let Ok(modified) = metadata.modified() {
-        response.headers_mut().insert(
-            header::LAST_MODIFIED,
-            http_date(modified.into()).parse().unwrap(),
-        );
-    }
-    response
-        .headers_mut()
-        .insert(header::ACCEPT_RANGES, "bytes".parse().unwrap());
-    response
-}
-
-fn directory_listing(dir: &Path, list_dirs: bool) -> String {
-    let mut entries: Vec<_> = if list_dirs {
-        match std::fs::read_dir(dir) {
-            Ok(entries) => entries.filter_map(|e| e.ok()).collect(),
-            Err(_) => Vec::new(),
-        }
-    } else {
-        // gin.Static wraps the filesystem with OnlyFilesFS, whose Readdir
-        // always returns no entries.
-        Vec::new()
-    };
-    entries.sort_by_key(|a| a.file_name());
     let mut body = String::from(
         "<!doctype html>\n<meta name=\"viewport\" content=\"width=device-width\">\n<pre>\n",
     );
     for entry in entries {
         let name = entry.file_name().to_string_lossy().to_string();
-        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        let is_dir = entry.file_type().await.map(|t| t.is_dir()).unwrap_or(false);
         let display = if is_dir {
             format!("{name}/")
         } else {
@@ -349,43 +244,7 @@ fn directory_listing(dir: &Path, list_dirs: bool) -> String {
         ));
     }
     body.push_str("</pre>\n");
-    body
-}
-
-fn mime_type(path: &Path) -> &'static str {
-    match path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or_default()
-        .to_lowercase()
-        .as_str()
-    {
-        "html" | "htm" => "text/html; charset=utf-8",
-        "css" => "text/css; charset=utf-8",
-        "js" | "mjs" => "text/javascript; charset=utf-8",
-        "json" => "application/json",
-        "svg" => "image/svg+xml",
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "ico" => "image/vnd.microsoft.icon",
-        "ogg" => "audio/ogg",
-        "mp3" => "audio/mpeg",
-        "wav" => "audio/wav",
-        "mp4" => "video/mp4",
-        "webm" => "video/webm",
-        "woff" => "font/woff",
-        "woff2" => "font/woff2",
-        "ttf" => "font/ttf",
-        "txt" => "text/plain; charset=utf-8",
-        "wasm" => "application/wasm",
-        _ => "application/octet-stream",
-    }
-}
-
-fn http_date(dt: DateTime<Utc>) -> String {
-    dt.format("%a, %d %b %Y %H:%M:%S GMT").to_string()
+    Ok(body)
 }
 
 fn html_escape(value: &str) -> String {
@@ -426,36 +285,6 @@ fn path_escape_component(value: &str) -> String {
         }
     }
     out
-}
-
-fn percent_decode(value: &str, plus_as_space: bool) -> String {
-    let bytes = value.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'%' if i + 2 < bytes.len() => {
-                let hi = (bytes[i + 1] as char).to_digit(16);
-                let lo = (bytes[i + 2] as char).to_digit(16);
-                if let (Some(hi), Some(lo)) = (hi, lo) {
-                    out.push((hi * 16 + lo) as u8);
-                    i += 3;
-                } else {
-                    out.push(bytes[i]);
-                    i += 1;
-                }
-            }
-            b'+' if plus_as_space => {
-                out.push(b' ');
-                i += 1;
-            }
-            b => {
-                out.push(b);
-                i += 1;
-            }
-        }
-    }
-    String::from_utf8_lossy(&out).to_string()
 }
 
 async fn api_version() -> Json<VersionInfo> {
@@ -680,4 +509,26 @@ async fn api_take_screenshot(
     State(state): State<SharedState>,
 ) -> AppResult<Json<crate::models::Screenshot>> {
     Ok(Json(state.gnuplex.take_screenshot()?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nested_static_services_do_not_conflict() {
+        let _router: Router = Router::new()
+            .route("/", get(root_redirect))
+            .route("/gnuplex", get(root_redirect))
+            .nest(
+                "/home",
+                Router::new().fallback_service(ServeDir::new("static")),
+            )
+            .nest(
+                "/screenshots",
+                Router::new()
+                    .route("/", get(|| async { "" }))
+                    .fallback_service(ServeDir::new("static")),
+            );
+    }
 }
