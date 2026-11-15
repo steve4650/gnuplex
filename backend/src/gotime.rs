@@ -69,31 +69,6 @@ where
     }
 }
 
-/// Format a float the way Go's encoding/json does.
-pub fn go_float_string(v: f64) -> String {
-    if v == 0.0 {
-        return if v.is_sign_negative() { "-0" } else { "0" }.to_string();
-    }
-    let abs = v.abs();
-    if abs < 1e-6 || abs >= 1e21 {
-        // Rust's LowerExp produces a shortest-round-trip mantissa, just like
-        // Go's strconv with format 'e'. Add the '+' Go emits on positive
-        // exponents.
-        let s = format!("{v:e}");
-        if let Some(pos) = s.find('e') {
-            let (mantissa, exp) = s.split_at(pos);
-            let exp = &exp[1..];
-            if let Some(positive) = exp.strip_prefix('-') {
-                return format!("{mantissa}e-{positive}");
-            }
-            return format!("{mantissa}e+{exp}");
-        }
-        s
-    } else {
-        format!("{v}")
-    }
-}
-
 /// serde_json formatter which performs the same HTML escaping that
 /// encoding/json does by default.
 struct GoFormatter;
@@ -169,16 +144,5 @@ mod tests {
             .with_nanosecond(127_656_750)
             .unwrap();
         assert_eq!(parse_db_time(&db_time_string(&dt)), Some(dt));
-    }
-
-    #[test]
-    fn floats_match_go() {
-        assert_eq!(go_float_string(0.0), "0");
-        assert_eq!(go_float_string(1.0), "1");
-        assert_eq!(go_float_string(1.5), "1.5");
-        assert_eq!(go_float_string(-2.5), "-2.5");
-        assert_eq!(go_float_string(1e6), "1000000");
-        assert_eq!(go_float_string(1e-7), "1e-7");
-        assert_eq!(go_float_string(1e21), "1e+21");
     }
 }

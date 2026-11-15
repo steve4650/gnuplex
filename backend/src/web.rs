@@ -2,23 +2,22 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
+use axum::Json;
 use axum::Router;
-use axum::body::{Body, Bytes, HttpBody};
-use axum::extract::{Path as AxumPath, RawQuery, Request, State};
+use axum::body::{Body, HttpBody};
+use axum::extract::{Path as AxumPath, Query, Request, State};
 use axum::http::{HeaderMap, HeaderName, StatusCode, header};
 use axum::middleware::{self, Next};
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use chrono::{DateTime, Utc};
-use serde::Serialize;
-use serde::de::DeserializeOwned;
-use serde_json::Value;
+use serde::Deserialize;
 use tokio::sync::watch;
-use tracing::{Level, debug, enabled, info};
+use tracing::{Level, debug, enabled, error, info};
 
 use crate::consts;
+use crate::error::{Error, Result as AppResult};
 use crate::gnuplex::Gnuplex;
-use crate::gotime::{go_float_string, to_go_json};
 use crate::models::{
     CastBody, FilterBody, MediaItemsRes, PlayMediaBody, PosBody, SkipBody, SubBody, VersionInfo,
     VolBody,
@@ -32,6 +31,19 @@ pub struct AppState {
 }
 
 pub type SharedState = Arc<AppState>;
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct MediaItemsQuery {
+    search: String,
+    offset: i64,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct ScreenshotsQuery {
+    limit: i64,
+}
 
 pub fn router(state: SharedState) -> Router {
     Router::new()
@@ -136,13 +148,6 @@ fn header_value(headers: &HeaderMap, name: HeaderName) -> &str {
         .unwrap_or_default()
 }
 
-fn json_response<T: Serialize + ?Sized>(status: StatusCode, value: &T) -> Response {
-    match to_go_json(value) {
-        Ok(body) => response(status, Some("application/json; charset=utf-8"), body),
-        Err(_) => empty_response(StatusCode::INTERNAL_SERVER_ERROR),
-    }
-}
-
 fn text_response(status: StatusCode, text: &str) -> Response {
     response(
         status,
@@ -167,20 +172,23 @@ fn response(status: StatusCode, content_type: Option<&str>, body: Vec<u8>) -> Re
     builder.body(Body::from(body)).unwrap()
 }
 
-fn json_internal_error() -> Response {
-    json_response(StatusCode::INTERNAL_SERVER_ERROR, &0)
-}
-
-fn json_zero_internal_error() -> Response {
-    json_response(StatusCode::INTERNAL_SERVER_ERROR, &0)
+impl IntoResponse for Error {
+    fn into_response(self) -> Response {
+        let status = match self {
+            Error::BadRequest(_) => StatusCode::BAD_REQUEST,
+            Error::NotFound(_) => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        if status == StatusCode::INTERNAL_SERVER_ERROR {
+            error!(error = %self, "request failed");
+            return text_response(status, "some problem doing that");
+        }
+        text_response(status, &self.to_string())
+    }
 }
 
 async fn not_found(State(_state): State<SharedState>) -> Response {
-    response(
-        StatusCode::NOT_FOUND,
-        Some("text/plain"),
-        b"404 page not found".to_vec(),
-    )
+    text_response(StatusCode::NOT_FOUND, "404 page not found")
 }
 
 fn redirect(location: &str) -> Response {
@@ -450,358 +458,226 @@ fn percent_decode(value: &str, plus_as_space: bool) -> String {
     String::from_utf8_lossy(&out).to_string()
 }
 
-fn query_param(raw: &RawQuery, key: &str) -> Option<String> {
-    let raw = raw.0.as_deref()?;
-    for pair in raw.split('&') {
-        let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
-        if percent_decode(name, true) == key {
-            return Some(percent_decode(value, true));
-        }
-    }
-    None
+async fn api_version() -> Json<VersionInfo> {
+    Json(VersionInfo {
+        version: consts::VERSION.to_string(),
+        source_hash: consts::SOURCE_HASH.to_string(),
+        platform: consts::PLATFORM.to_string(),
+        go_version: consts::COMPILER_VERSION.to_string(),
+    })
 }
 
-fn parse_body<T: DeserializeOwned + Default>(body: &Bytes) -> Result<T, ()> {
-    let value: Value = serde_json::from_slice(body).map_err(|_| ())?;
-    if value.is_null() {
-        return Ok(T::default());
-    }
-    serde_json::from_value(value).map_err(|_| ())
+async fn api_play(State(state): State<SharedState>) -> AppResult<StatusCode> {
+    state.gnuplex.mpv.play()?;
+    Ok(StatusCode::OK)
 }
 
-/// Go's encoding/json refuses to unmarshal a JSON array into a struct, while
-/// serde happily treats one as a sequence of struct fields. Request bodies
-/// destined for Go structs must therefore be objects (or null).
-fn parse_object_body<T: DeserializeOwned + Default>(body: &Bytes) -> Result<T, ()> {
-    let value: Value = serde_json::from_slice(body).map_err(|_| ())?;
-    if value.is_null() {
-        return Ok(T::default());
-    }
-    if !value.is_object() {
-        return Err(());
-    }
-    serde_json::from_value(value).map_err(|_| ())
+async fn api_pause(State(state): State<SharedState>) -> AppResult<StatusCode> {
+    state.gnuplex.mpv.pause()?;
+    Ok(StatusCode::OK)
 }
 
-async fn api_version() -> Response {
-    json_response(
-        StatusCode::OK,
-        &VersionInfo {
-            version: consts::VERSION.to_string(),
-            source_hash: consts::SOURCE_HASH.to_string(),
-            platform: consts::PLATFORM.to_string(),
-            go_version: consts::COMPILER_VERSION.to_string(),
-        },
-    )
+async fn api_playpause(State(state): State<SharedState>) -> AppResult<StatusCode> {
+    state.gnuplex.mpv.play_pause()?;
+    Ok(StatusCode::OK)
 }
 
-async fn api_play(State(state): State<SharedState>) -> Response {
-    match state.gnuplex.mpv.play() {
-        Ok(()) => empty_response(StatusCode::OK),
-        Err(_) => text_response(StatusCode::INTERNAL_SERVER_ERROR, "some problem doing that"),
-    }
+async fn api_skip(State(state): State<SharedState>) -> AppResult<StatusCode> {
+    state.gnuplex.mpv.skip()?;
+    Ok(StatusCode::OK)
 }
 
-async fn api_pause(State(state): State<SharedState>) -> Response {
-    match state.gnuplex.mpv.pause() {
-        Ok(()) => empty_response(StatusCode::OK),
-        Err(_) => text_response(StatusCode::INTERNAL_SERVER_ERROR, "some problem doing that"),
-    }
+async fn api_now_playing(
+    State(state): State<SharedState>,
+) -> AppResult<Json<Option<Vec<crate::models::MediaItem>>>> {
+    Ok(Json(state.gnuplex.get_now_playing()?))
 }
 
-async fn api_playpause(State(state): State<SharedState>) -> Response {
-    match state.gnuplex.mpv.play_pause() {
-        Ok(()) => empty_response(StatusCode::OK),
-        Err(_) => text_response(StatusCode::INTERNAL_SERVER_ERROR, "some problem doing that"),
-    }
-}
-
-async fn api_skip(State(state): State<SharedState>) -> Response {
-    match state.gnuplex.mpv.skip() {
-        Ok(()) => empty_response(StatusCode::OK),
-        Err(_) => text_response(StatusCode::INTERNAL_SERVER_ERROR, "some problem doing that"),
-    }
-}
-
-async fn api_now_playing(State(state): State<SharedState>) -> Response {
-    match state.gnuplex.get_now_playing() {
-        Ok(media) => json_response(StatusCode::OK, &media),
-        Err(_) => json_response(StatusCode::INTERNAL_SERVER_ERROR, &""),
-    }
-}
-
-async fn api_play_media(State(state): State<SharedState>, body: Bytes) -> Response {
-    let body: PlayMediaBody = match parse_object_body(&body) {
-        Ok(body) => body,
-        Err(()) => return text_response(StatusCode::BAD_REQUEST, "bad body format"),
-    };
-    match state
+async fn api_play_media(
+    State(state): State<SharedState>,
+    Json(body): Json<PlayMediaBody>,
+) -> AppResult<StatusCode> {
+    state
         .gnuplex
-        .play_by_id(body.id, body.play_next, body.play_last)
-    {
-        Ok(()) => empty_response(StatusCode::OK),
-        Err(_) => text_response(StatusCode::INTERNAL_SERVER_ERROR, "some problem doing that"),
-    }
+        .play_by_id(body.id, body.play_next, body.play_last)?;
+    Ok(StatusCode::OK)
 }
 
-async fn api_cast(State(state): State<SharedState>, body: Bytes) -> Response {
-    let body: CastBody = match parse_object_body(&body) {
-        Ok(body) => body,
-        Err(()) => return text_response(StatusCode::BAD_REQUEST, "bad body format"),
-    };
-    match state
+async fn api_cast(
+    State(state): State<SharedState>,
+    Json(body): Json<CastBody>,
+) -> AppResult<StatusCode> {
+    state
         .gnuplex
-        .cast(&body.url, body.temp, body.play_next, body.play_last)
-    {
-        Ok(()) => empty_response(StatusCode::OK),
-        Err(_) => text_response(StatusCode::INTERNAL_SERVER_ERROR, "some problem doing that"),
-    }
+        .cast(&body.url, body.temp, body.play_next, body.play_last)?;
+    Ok(StatusCode::OK)
 }
 
-async fn api_paused(State(state): State<SharedState>) -> Response {
-    match state.gnuplex.mpv.get_paused() {
-        Ok(paused) => json_response(StatusCode::OK, &paused),
-        Err(_) => json_response(StatusCode::INTERNAL_SERVER_ERROR, &0),
-    }
+async fn api_paused(State(state): State<SharedState>) -> AppResult<Json<bool>> {
+    Ok(Json(state.gnuplex.mpv.get_paused()?))
 }
 
-async fn api_get_vol(State(state): State<SharedState>) -> Response {
-    match state.gnuplex.mpv.get_vol() {
-        Ok(vol) => json_response(StatusCode::OK, &vol),
-        Err(_) => json_internal_error(),
-    }
+async fn api_get_vol(State(state): State<SharedState>) -> AppResult<Json<i64>> {
+    Ok(Json(state.gnuplex.mpv.get_vol()?))
 }
 
-async fn api_set_vol(State(state): State<SharedState>, body: Bytes) -> Response {
-    let body: VolBody = match parse_object_body(&body) {
-        Ok(body) => body,
-        Err(()) => return text_response(StatusCode::BAD_REQUEST, "bad body format"),
-    };
-    match state.gnuplex.mpv.set_vol(body.vol) {
-        Ok(()) => json_response(StatusCode::OK, &true),
-        Err(_) => text_response(StatusCode::INTERNAL_SERVER_ERROR, "some problem doing that"),
-    }
+async fn api_set_vol(
+    State(state): State<SharedState>,
+    Json(body): Json<VolBody>,
+) -> AppResult<StatusCode> {
+    state.gnuplex.mpv.set_vol(body.vol)?;
+    Ok(StatusCode::OK)
 }
 
-async fn api_get_media_dirs(State(state): State<SharedState>) -> Response {
-    match state.gnuplex.db.get_media_dirs() {
-        Ok(dirs) => json_response(StatusCode::OK, &dirs),
-        Err(_) => empty_response(StatusCode::INTERNAL_SERVER_ERROR),
-    }
+async fn api_get_media_dirs(
+    State(state): State<SharedState>,
+) -> AppResult<Json<Vec<crate::models::MediaDir>>> {
+    Ok(Json(state.gnuplex.db.get_media_dirs()?))
 }
 
-async fn api_set_media_dirs(State(state): State<SharedState>, body: Bytes) -> Response {
-    let body: Vec<String> = match parse_body(&body) {
-        Ok(body) => body,
-        Err(()) => return text_response(StatusCode::BAD_REQUEST, "bad body format"),
-    };
-    match state.gnuplex.db.set_media_dirs(&body) {
-        Ok(()) => empty_response(StatusCode::OK),
-        Err(_) => text_response(StatusCode::INTERNAL_SERVER_ERROR, "some problem doing that"),
-    }
+async fn api_set_media_dirs(
+    State(state): State<SharedState>,
+    Json(body): Json<Vec<String>>,
+) -> AppResult<StatusCode> {
+    state.gnuplex.db.set_media_dirs(&body)?;
+    Ok(StatusCode::OK)
 }
 
-async fn api_get_file_exts(State(state): State<SharedState>) -> Response {
-    match state.gnuplex.db.get_file_exts() {
-        Ok(exts) => json_response(StatusCode::OK, &exts),
-        Err(_) => empty_response(StatusCode::INTERNAL_SERVER_ERROR),
-    }
+async fn api_get_file_exts(
+    State(state): State<SharedState>,
+) -> AppResult<Json<Vec<crate::models::FileExtension>>> {
+    Ok(Json(state.gnuplex.db.get_file_exts()?))
 }
 
-async fn api_set_file_exts(State(state): State<SharedState>, body: Bytes) -> Response {
-    let body: Vec<String> = match parse_body(&body) {
-        Ok(body) => body,
-        Err(()) => return text_response(StatusCode::BAD_REQUEST, "bad body format"),
-    };
-    match state.gnuplex.db.set_file_exts(&body) {
-        Ok(()) => empty_response(StatusCode::OK),
-        Err(_) => text_response(StatusCode::INTERNAL_SERVER_ERROR, "some problem doing that"),
-    }
+async fn api_set_file_exts(
+    State(state): State<SharedState>,
+    Json(body): Json<Vec<String>>,
+) -> AppResult<StatusCode> {
+    state.gnuplex.db.set_file_exts(&body)?;
+    Ok(StatusCode::OK)
 }
 
-async fn api_get_pos(State(state): State<SharedState>) -> Response {
-    match state.gnuplex.mpv.get_pos() {
-        Ok(pos) => json_response(StatusCode::OK, &pos),
-        Err(_) => json_zero_internal_error(),
-    }
+async fn api_get_pos(State(state): State<SharedState>) -> AppResult<Json<i64>> {
+    Ok(Json(state.gnuplex.mpv.get_pos()?))
 }
 
-async fn api_time_remaining(State(state): State<SharedState>) -> Response {
-    match state.gnuplex.mpv.get_time_remaining() {
-        Ok(remaining) => json_response(StatusCode::OK, &remaining),
-        Err(_) => json_zero_internal_error(),
-    }
+async fn api_time_remaining(State(state): State<SharedState>) -> AppResult<Json<i64>> {
+    Ok(Json(state.gnuplex.mpv.get_time_remaining()?))
 }
 
-async fn api_set_pos(State(state): State<SharedState>, body: Bytes) -> Response {
-    let body: PosBody = match parse_object_body(&body) {
-        Ok(body) => body,
-        Err(()) => return text_response(StatusCode::BAD_REQUEST, "bad body format"),
-    };
-    match state.gnuplex.mpv.set_pos(body.pos) {
-        Ok(()) => empty_response(StatusCode::OK),
-        Err(_) => text_response(StatusCode::INTERNAL_SERVER_ERROR, "some problem doing that"),
-    }
+async fn api_set_pos(
+    State(state): State<SharedState>,
+    Json(body): Json<PosBody>,
+) -> AppResult<StatusCode> {
+    state.gnuplex.mpv.set_pos(body.pos)?;
+    Ok(StatusCode::OK)
 }
 
-async fn api_last_25(State(state): State<SharedState>) -> Response {
-    match state.gnuplex.db.get_last_25_played() {
-        Ok(items) => json_response(StatusCode::OK, &items),
-        Err(_) => empty_response(StatusCode::INTERNAL_SERVER_ERROR),
-    }
+async fn api_last_25(
+    State(state): State<SharedState>,
+) -> AppResult<Json<Vec<crate::models::MediaItem>>> {
+    Ok(Json(state.gnuplex.db.get_last_25_played()?))
 }
 
-async fn api_media_items(State(state): State<SharedState>, raw: RawQuery) -> Response {
-    let search = query_param(&raw, "search").unwrap_or_default();
-    let offset_str = query_param(&raw, "offset").unwrap_or_default();
-    let offset = if offset_str.is_empty() {
-        0
-    } else {
-        match offset_str.parse::<i64>() {
-            Ok(offset) => offset,
-            Err(_) => return empty_response(StatusCode::INTERNAL_SERVER_ERROR),
-        }
-    };
-    match state.gnuplex.db.get_media_items(&search, offset) {
-        Ok((items, count)) => json_response(StatusCode::OK, &MediaItemsRes { res: items, count }),
-        Err(_) => empty_response(StatusCode::INTERNAL_SERVER_ERROR),
-    }
+async fn api_media_items(
+    State(state): State<SharedState>,
+    Query(query): Query<MediaItemsQuery>,
+) -> AppResult<Json<MediaItemsRes>> {
+    let (items, count) = state
+        .gnuplex
+        .db
+        .get_media_items(&query.search, query.offset)?;
+    Ok(Json(MediaItemsRes { res: items, count }))
 }
 
-async fn api_scan_lib(State(state): State<SharedState>) -> Response {
-    match state.gnuplex.scan_lib() {
-        Ok(()) => empty_response(StatusCode::OK),
-        Err(_) => empty_response(StatusCode::INTERNAL_SERVER_ERROR),
-    }
+async fn api_scan_lib(State(state): State<SharedState>) -> AppResult<StatusCode> {
+    state.gnuplex.scan_lib()?;
+    Ok(StatusCode::OK)
 }
 
-async fn api_get_subs(State(state): State<SharedState>) -> Response {
-    match state.gnuplex.get_subs() {
-        Ok(subs) => json_response(StatusCode::OK, &subs),
-        Err(_) => empty_response(StatusCode::INTERNAL_SERVER_ERROR),
-    }
+async fn api_get_subs(
+    State(state): State<SharedState>,
+) -> AppResult<Json<Option<Vec<crate::models::Track>>>> {
+    Ok(Json(state.gnuplex.get_subs()?))
 }
 
-async fn api_set_subs(State(state): State<SharedState>, body: Bytes) -> Response {
-    let body: SubBody = match parse_object_body(&body) {
-        Ok(body) => body,
-        Err(()) => return text_response(StatusCode::BAD_REQUEST, "bad body format"),
-    };
+async fn api_set_subs(
+    State(state): State<SharedState>,
+    Json(body): Json<SubBody>,
+) -> AppResult<StatusCode> {
     if body.id == -1 {
-        match state.gnuplex.set_sub_visibility(body.visible) {
-            Ok(()) => empty_response(StatusCode::OK),
-            Err(_) => text_response(StatusCode::INTERNAL_SERVER_ERROR, "some problem doing that"),
-        }
+        state.gnuplex.set_sub_visibility(body.visible)?;
     } else {
-        if state.gnuplex.set_sub_track(body.id).is_err() {
-            return text_response(StatusCode::INTERNAL_SERVER_ERROR, "some problem doing that");
-        }
-        match state.gnuplex.set_sub_visibility(true) {
-            Ok(()) => empty_response(StatusCode::OK),
-            Err(_) => text_response(StatusCode::INTERNAL_SERVER_ERROR, "some problem doing that"),
-        }
+        state.gnuplex.set_sub_track(body.id)?;
+        state.gnuplex.set_sub_visibility(true)?;
     }
+    Ok(StatusCode::OK)
 }
 
-async fn api_get_sub_delay(State(state): State<SharedState>) -> Response {
-    match state.gnuplex.mpv.get_sub_delay() {
-        Ok(delay) => response(
-            StatusCode::OK,
-            Some("application/json; charset=utf-8"),
-            go_float_string(delay).into_bytes(),
-        ),
-        Err(_) => json_zero_internal_error(),
-    }
+async fn api_get_sub_delay(State(state): State<SharedState>) -> AppResult<Json<f64>> {
+    Ok(Json(state.gnuplex.mpv.get_sub_delay()?))
 }
 
-async fn api_set_sub_delay(State(state): State<SharedState>, body: Bytes) -> Response {
-    let body: SubBody = match parse_object_body(&body) {
-        Ok(body) => body,
-        Err(()) => return text_response(StatusCode::BAD_REQUEST, "bad body format"),
-    };
-    match state.gnuplex.mpv.set_sub_delay(body.delay) {
-        Ok(()) => empty_response(StatusCode::OK),
-        Err(_) => text_response(StatusCode::INTERNAL_SERVER_ERROR, "some problem doing that"),
-    }
+async fn api_set_sub_delay(
+    State(state): State<SharedState>,
+    Json(body): Json<SubBody>,
+) -> AppResult<StatusCode> {
+    state.gnuplex.mpv.set_sub_delay(body.delay)?;
+    Ok(StatusCode::OK)
 }
 
-async fn api_sub_seek(State(state): State<SharedState>, body: Bytes) -> Response {
-    let body: SkipBody = match parse_object_body(&body) {
-        Ok(body) => body,
-        Err(()) => return text_response(StatusCode::BAD_REQUEST, "bad body format"),
-    };
-    match state.gnuplex.mpv.sub_seek(body.skip) {
-        Ok(()) => empty_response(StatusCode::OK),
-        Err(_) => text_response(StatusCode::INTERNAL_SERVER_ERROR, "some problem doing that"),
-    }
+async fn api_sub_seek(
+    State(state): State<SharedState>,
+    Json(body): Json<SkipBody>,
+) -> AppResult<StatusCode> {
+    state.gnuplex.mpv.sub_seek(body.skip)?;
+    Ok(StatusCode::OK)
 }
 
-async fn api_sub_save(State(state): State<SharedState>) -> Response {
-    match state.gnuplex.save_sub_delay() {
-        Ok(()) => empty_response(StatusCode::OK),
-        Err(_) => text_response(StatusCode::INTERNAL_SERVER_ERROR, "some problem doing that"),
-    }
+async fn api_sub_save(State(state): State<SharedState>) -> AppResult<StatusCode> {
+    state.gnuplex.save_sub_delay()?;
+    Ok(StatusCode::OK)
 }
 
-async fn api_upgrade(State(state): State<SharedState>) -> Response {
-    match upgrade_gnuplex(&state.exe, false) {
-        Ok(upgraded) => {
-            if upgraded {
-                info!("Upgraded and going into shutdown");
-                let _ = state.shutdown.send(true);
-            } else {
-                info!("Already up to date");
-            }
-            empty_response(StatusCode::OK)
-        }
-        Err(_) => text_response(StatusCode::INTERNAL_SERVER_ERROR, "some problem doing that"),
+async fn api_upgrade(State(state): State<SharedState>) -> AppResult<StatusCode> {
+    if upgrade_gnuplex(&state.exe, false)? {
+        info!("Upgraded and going into shutdown");
+        let _ = state.shutdown.send(true);
+    } else {
+        info!("Already up to date");
     }
+    Ok(StatusCode::OK)
 }
 
-async fn api_filter(State(state): State<SharedState>, body: Bytes) -> Response {
-    let body: FilterBody = match parse_object_body(&body) {
-        Ok(body) => body,
-        Err(()) => return text_response(StatusCode::BAD_REQUEST, "bad body format"),
-    };
-    match state.gnuplex.mpv.set_filter(&body.filter) {
-        Ok(()) => empty_response(StatusCode::OK),
-        Err(_) => text_response(StatusCode::INTERNAL_SERVER_ERROR, "some problem doing that"),
-    }
+async fn api_filter(
+    State(state): State<SharedState>,
+    Json(body): Json<FilterBody>,
+) -> AppResult<StatusCode> {
+    state.gnuplex.mpv.set_filter(&body.filter)?;
+    Ok(StatusCode::OK)
 }
 
-async fn api_delete_queue_entry(State(state): State<SharedState>, body: Bytes) -> Response {
-    let queue_index: i64 = match parse_body(&body) {
-        Ok(index) => index,
-        Err(()) => return text_response(StatusCode::BAD_REQUEST, "bad body format"),
-    };
+async fn api_delete_queue_entry(
+    State(state): State<SharedState>,
+    Json(queue_index): Json<i64>,
+) -> AppResult<StatusCode> {
     if queue_index < 0 {
-        return text_response(StatusCode::BAD_REQUEST, "negative index passed");
+        return Err(Error::BadRequest("negative index passed".to_string()));
     }
-    match state.gnuplex.mpv.delete_queue_entry(queue_index) {
-        Ok(()) => empty_response(StatusCode::OK),
-        Err(_) => text_response(StatusCode::INTERNAL_SERVER_ERROR, "some problem doing that"),
-    }
+    state.gnuplex.mpv.delete_queue_entry(queue_index)?;
+    Ok(StatusCode::OK)
 }
 
-async fn api_get_screenshots(State(state): State<SharedState>, raw: RawQuery) -> Response {
-    let limit_str = query_param(&raw, "limit").unwrap_or_default();
-    let limit = if limit_str.is_empty() {
-        10
-    } else {
-        match limit_str.parse::<i64>() {
-            Ok(limit) => limit,
-            Err(_) => return text_response(StatusCode::BAD_REQUEST, "bad limit"),
-        }
-    };
-    match state.gnuplex.list_recent_screenshots(limit) {
-        Ok(screenshots) => json_response(StatusCode::OK, &screenshots),
-        Err(_) => text_response(StatusCode::INTERNAL_SERVER_ERROR, "some problem doing that"),
-    }
+async fn api_get_screenshots(
+    State(state): State<SharedState>,
+    Query(query): Query<ScreenshotsQuery>,
+) -> AppResult<Json<Vec<crate::models::Screenshot>>> {
+    let limit = if query.limit == 0 { 10 } else { query.limit };
+    Ok(Json(state.gnuplex.list_recent_screenshots(limit)?))
 }
 
-async fn api_take_screenshot(State(state): State<SharedState>) -> Response {
-    match state.gnuplex.take_screenshot() {
-        Ok(screenshot) => json_response(StatusCode::OK, &screenshot),
-        Err(_) => text_response(StatusCode::INTERNAL_SERVER_ERROR, "some problem doing that"),
-    }
+async fn api_take_screenshot(
+    State(state): State<SharedState>,
+) -> AppResult<Json<crate::models::Screenshot>> {
+    Ok(Json(state.gnuplex.take_screenshot()?))
 }
