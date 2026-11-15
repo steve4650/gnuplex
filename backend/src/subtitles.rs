@@ -6,8 +6,7 @@ use crate::error::{Error, Result};
 
 /// Shift every cue in a subtitle file by `delta_seconds` (positive means
 /// later) and rewrite the file in place.
-pub fn shift_subtitle_file(filename: &str, delta_seconds: f64) -> Result<()> {
-    let path = Path::new(filename);
+pub fn shift_subtitle_file(path: &Path, delta_seconds: f64) -> Result<()> {
     let format = match path
         .extension()
         .and_then(|extension| extension.to_str())
@@ -19,7 +18,8 @@ pub fn shift_subtitle_file(filename: &str, delta_seconds: f64) -> Result<()> {
         Some("ass") | Some("ssa") => Format::Ass,
         _ => {
             return Err(Error::Subtitle(format!(
-                "unsupported subtitle format: {filename}"
+                "unsupported subtitle format: {}",
+                path.display()
             )));
         }
     };
@@ -65,7 +65,7 @@ mod tests {
         )
         .unwrap();
         drop(file);
-        shift_subtitle_file(path.to_str().unwrap(), -2.5).unwrap();
+        shift_subtitle_file(&path, -2.5).unwrap();
         let out = std::fs::read(&path).unwrap();
         assert_eq!(
             out,
