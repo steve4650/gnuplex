@@ -185,6 +185,36 @@ impl IntoResponse for Error {
     }
 }
 
+/// Run blocking work (SQLite, the mpv IPC socket, git) on the blocking pool so
+/// it cannot stall the async runtime.
+async fn run_blocking<F, T>(work: F) -> AppResult<T>
+where
+    F: FnOnce() -> AppResult<T> + Send + 'static,
+    T: Send + 'static,
+{
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|err| Error::Task(err.to_string()))?
+}
+
+async fn with_gnuplex<T, F>(state: &SharedState, work: F) -> AppResult<T>
+where
+    F: FnOnce(&Gnuplex) -> AppResult<T> + Send + 'static,
+    T: Send + 'static,
+{
+    let gnuplex = Arc::clone(&state.gnuplex);
+    run_blocking(move || work(&gnuplex)).await
+}
+
+async fn with_mpv<T, F>(state: &SharedState, work: F) -> AppResult<T>
+where
+    F: FnOnce(&crate::mpv::Mpv) -> AppResult<T> + Send + 'static,
+    T: Send + 'static,
+{
+    let mpv = Arc::clone(&state.gnuplex.mpv);
+    run_blocking(move || work(&mpv)).await
+}
+
 async fn not_found(State(_state): State<SharedState>) -> Response {
     text_response(StatusCode::NOT_FOUND, "404 page not found")
 }
@@ -297,38 +327,40 @@ async fn api_version() -> Json<VersionInfo> {
 }
 
 async fn api_play(State(state): State<SharedState>) -> AppResult<StatusCode> {
-    state.gnuplex.mpv.play()?;
+    with_mpv(&state, |mpv| mpv.play()).await?;
     Ok(StatusCode::OK)
 }
 
 async fn api_pause(State(state): State<SharedState>) -> AppResult<StatusCode> {
-    state.gnuplex.mpv.pause()?;
+    with_mpv(&state, |mpv| mpv.pause()).await?;
     Ok(StatusCode::OK)
 }
 
 async fn api_playpause(State(state): State<SharedState>) -> AppResult<StatusCode> {
-    state.gnuplex.mpv.play_pause()?;
+    with_mpv(&state, |mpv| mpv.play_pause()).await?;
     Ok(StatusCode::OK)
 }
 
 async fn api_skip(State(state): State<SharedState>) -> AppResult<StatusCode> {
-    state.gnuplex.mpv.skip()?;
+    with_mpv(&state, |mpv| mpv.skip()).await?;
     Ok(StatusCode::OK)
 }
 
 async fn api_now_playing(
     State(state): State<SharedState>,
 ) -> AppResult<Json<Option<Vec<crate::models::MediaItem>>>> {
-    Ok(Json(state.gnuplex.get_now_playing()?))
+    let media = with_gnuplex(&state, |gnuplex| gnuplex.get_now_playing()).await?;
+    Ok(Json(media))
 }
 
 async fn api_play_media(
     State(state): State<SharedState>,
     Json(body): Json<PlayMediaBody>,
 ) -> AppResult<StatusCode> {
-    state
-        .gnuplex
-        .play_by_id(body.id, body.play_next, body.play_last)?;
+    with_gnuplex(&state, move |gnuplex| {
+        gnuplex.play_by_id(body.id, body.play_next, body.play_last)
+    })
+    .await?;
     Ok(StatusCode::OK)
 }
 
@@ -336,122 +368,135 @@ async fn api_cast(
     State(state): State<SharedState>,
     Json(body): Json<CastBody>,
 ) -> AppResult<StatusCode> {
-    state
-        .gnuplex
-        .cast(&body.url, body.temp, body.play_next, body.play_last)?;
+    with_gnuplex(&state, move |gnuplex| {
+        gnuplex.cast(&body.url, body.temp, body.play_next, body.play_last)
+    })
+    .await?;
     Ok(StatusCode::OK)
 }
 
 async fn api_paused(State(state): State<SharedState>) -> AppResult<Json<bool>> {
-    Ok(Json(state.gnuplex.mpv.get_paused()?))
+    let paused = with_mpv(&state, |mpv| mpv.get_paused()).await?;
+    Ok(Json(paused))
 }
 
 async fn api_get_vol(State(state): State<SharedState>) -> AppResult<Json<i64>> {
-    Ok(Json(state.gnuplex.mpv.get_vol()?))
+    let vol = with_mpv(&state, |mpv| mpv.get_vol()).await?;
+    Ok(Json(vol))
 }
 
 async fn api_set_vol(
     State(state): State<SharedState>,
     Json(body): Json<VolBody>,
 ) -> AppResult<StatusCode> {
-    state.gnuplex.mpv.set_vol(body.vol)?;
+    with_mpv(&state, move |mpv| mpv.set_vol(body.vol)).await?;
     Ok(StatusCode::OK)
 }
 
 async fn api_get_media_dirs(
     State(state): State<SharedState>,
 ) -> AppResult<Json<Vec<crate::models::MediaDir>>> {
-    Ok(Json(state.gnuplex.db.get_media_dirs()?))
+    let dirs = with_gnuplex(&state, |gnuplex| gnuplex.db.get_media_dirs()).await?;
+    Ok(Json(dirs))
 }
 
 async fn api_set_media_dirs(
     State(state): State<SharedState>,
     Json(body): Json<Vec<String>>,
 ) -> AppResult<StatusCode> {
-    state.gnuplex.db.set_media_dirs(&body)?;
+    with_gnuplex(&state, move |gnuplex| gnuplex.db.set_media_dirs(&body)).await?;
     Ok(StatusCode::OK)
 }
 
 async fn api_get_file_exts(
     State(state): State<SharedState>,
 ) -> AppResult<Json<Vec<crate::models::FileExtension>>> {
-    Ok(Json(state.gnuplex.db.get_file_exts()?))
+    let extensions = with_gnuplex(&state, |gnuplex| gnuplex.db.get_file_exts()).await?;
+    Ok(Json(extensions))
 }
 
 async fn api_set_file_exts(
     State(state): State<SharedState>,
     Json(body): Json<Vec<String>>,
 ) -> AppResult<StatusCode> {
-    state.gnuplex.db.set_file_exts(&body)?;
+    with_gnuplex(&state, move |gnuplex| gnuplex.db.set_file_exts(&body)).await?;
     Ok(StatusCode::OK)
 }
 
 async fn api_get_pos(State(state): State<SharedState>) -> AppResult<Json<i64>> {
-    Ok(Json(state.gnuplex.mpv.get_pos()?))
+    let position = with_mpv(&state, |mpv| mpv.get_pos()).await?;
+    Ok(Json(position))
 }
 
 async fn api_time_remaining(State(state): State<SharedState>) -> AppResult<Json<i64>> {
-    Ok(Json(state.gnuplex.mpv.get_time_remaining()?))
+    let remaining = with_mpv(&state, |mpv| mpv.get_time_remaining()).await?;
+    Ok(Json(remaining))
 }
 
 async fn api_set_pos(
     State(state): State<SharedState>,
     Json(body): Json<PosBody>,
 ) -> AppResult<StatusCode> {
-    state.gnuplex.mpv.set_pos(body.pos)?;
+    with_mpv(&state, move |mpv| mpv.set_pos(body.pos)).await?;
     Ok(StatusCode::OK)
 }
 
 async fn api_last_25(
     State(state): State<SharedState>,
 ) -> AppResult<Json<Vec<crate::models::MediaItem>>> {
-    Ok(Json(state.gnuplex.db.get_last_25_played()?))
+    let items = with_gnuplex(&state, |gnuplex| gnuplex.db.get_last_25_played()).await?;
+    Ok(Json(items))
 }
 
 async fn api_media_items(
     State(state): State<SharedState>,
     Query(query): Query<MediaItemsQuery>,
 ) -> AppResult<Json<MediaItemsRes>> {
-    let (items, count) = state
-        .gnuplex
-        .db
-        .get_media_items(&query.search, query.offset)?;
+    let (items, count) = with_gnuplex(&state, move |gnuplex| {
+        gnuplex.db.get_media_items(&query.search, query.offset)
+    })
+    .await?;
     Ok(Json(MediaItemsRes { res: items, count }))
 }
 
 async fn api_scan_lib(State(state): State<SharedState>) -> AppResult<StatusCode> {
-    state.gnuplex.scan_lib()?;
+    with_gnuplex(&state, |gnuplex| gnuplex.scan_lib()).await?;
     Ok(StatusCode::OK)
 }
 
 async fn api_get_subs(
     State(state): State<SharedState>,
 ) -> AppResult<Json<Option<Vec<crate::models::Track>>>> {
-    Ok(Json(state.gnuplex.get_subs()?))
+    let subs = with_gnuplex(&state, |gnuplex| gnuplex.get_subs()).await?;
+    Ok(Json(subs))
 }
 
 async fn api_set_subs(
     State(state): State<SharedState>,
     Json(body): Json<SubBody>,
 ) -> AppResult<StatusCode> {
-    if body.id == -1 {
-        state.gnuplex.set_sub_visibility(body.visible)?;
-    } else {
-        state.gnuplex.set_sub_track(body.id)?;
-        state.gnuplex.set_sub_visibility(true)?;
-    }
+    with_gnuplex(&state, move |gnuplex| {
+        if body.id == -1 {
+            gnuplex.set_sub_visibility(body.visible)
+        } else {
+            gnuplex.set_sub_track(body.id)?;
+            gnuplex.set_sub_visibility(true)
+        }
+    })
+    .await?;
     Ok(StatusCode::OK)
 }
 
 async fn api_get_sub_delay(State(state): State<SharedState>) -> AppResult<Json<f64>> {
-    Ok(Json(state.gnuplex.mpv.get_sub_delay()?))
+    let delay = with_mpv(&state, |mpv| mpv.get_sub_delay()).await?;
+    Ok(Json(delay))
 }
 
 async fn api_set_sub_delay(
     State(state): State<SharedState>,
     Json(body): Json<SubBody>,
 ) -> AppResult<StatusCode> {
-    state.gnuplex.mpv.set_sub_delay(body.delay)?;
+    with_mpv(&state, move |mpv| mpv.set_sub_delay(body.delay)).await?;
     Ok(StatusCode::OK)
 }
 
@@ -459,17 +504,18 @@ async fn api_sub_seek(
     State(state): State<SharedState>,
     Json(body): Json<SkipBody>,
 ) -> AppResult<StatusCode> {
-    state.gnuplex.mpv.sub_seek(body.skip)?;
+    with_mpv(&state, move |mpv| mpv.sub_seek(body.skip)).await?;
     Ok(StatusCode::OK)
 }
 
 async fn api_sub_save(State(state): State<SharedState>) -> AppResult<StatusCode> {
-    state.gnuplex.save_sub_delay()?;
+    with_gnuplex(&state, |gnuplex| gnuplex.save_sub_delay()).await?;
     Ok(StatusCode::OK)
 }
 
 async fn api_upgrade(State(state): State<SharedState>) -> AppResult<StatusCode> {
-    if upgrade_gnuplex(&state.exe, false)? {
+    let exe = state.exe.clone();
+    if run_blocking(move || upgrade_gnuplex(&exe, false)).await? {
         info!("Upgraded and going into shutdown");
         let _ = state.shutdown.send(true);
     } else {
@@ -482,7 +528,7 @@ async fn api_filter(
     State(state): State<SharedState>,
     Json(body): Json<FilterBody>,
 ) -> AppResult<StatusCode> {
-    state.gnuplex.mpv.set_filter(&body.filter)?;
+    with_mpv(&state, move |mpv| mpv.set_filter(&body.filter)).await?;
     Ok(StatusCode::OK)
 }
 
@@ -493,7 +539,7 @@ async fn api_delete_queue_entry(
     if queue_index < 0 {
         return Err(Error::BadRequest("negative index passed".to_string()));
     }
-    state.gnuplex.mpv.delete_queue_entry(queue_index)?;
+    with_mpv(&state, move |mpv| mpv.delete_queue_entry(queue_index)).await?;
     Ok(StatusCode::OK)
 }
 
@@ -502,15 +548,19 @@ async fn api_get_screenshots(
     Query(query): Query<ScreenshotsQuery>,
 ) -> AppResult<Json<Vec<crate::models::Screenshot>>> {
     let limit = if query.limit == 0 { 10 } else { query.limit };
-    Ok(Json(state.gnuplex.list_recent_screenshots(limit)?))
+    let screenshots = with_gnuplex(&state, move |gnuplex| {
+        gnuplex.list_recent_screenshots(limit)
+    })
+    .await?;
+    Ok(Json(screenshots))
 }
 
 async fn api_take_screenshot(
     State(state): State<SharedState>,
 ) -> AppResult<Json<crate::models::Screenshot>> {
-    Ok(Json(state.gnuplex.take_screenshot()?))
+    let screenshot = with_gnuplex(&state, |gnuplex| gnuplex.take_screenshot()).await?;
+    Ok(Json(screenshot))
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
