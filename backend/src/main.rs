@@ -2,11 +2,11 @@ mod consts;
 mod db;
 mod error;
 mod gnuplex;
-mod gotime;
 mod models;
 mod mpv;
 mod screenshots;
 mod subtitles;
+mod timestamps;
 mod upgrade;
 mod web;
 

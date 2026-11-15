@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::gotime::{serialize_go_time, serialize_opt_go_time};
+use crate::timestamps::{serialize_optional_time, serialize_time};
 
 pub const MEDIA_TYPE_FILE: i64 = 1;
 pub const MEDIA_TYPE_URL: i64 = 2;
@@ -17,11 +17,11 @@ fn queue_id_absent(value: &Option<i64>) -> bool {
 pub struct MediaItem {
     #[serde(rename = "ID")]
     pub id: i64,
-    #[serde(rename = "CreatedAt", serialize_with = "serialize_go_time")]
+    #[serde(rename = "CreatedAt", serialize_with = "serialize_time")]
     pub created_at: DateTime<Utc>,
-    #[serde(rename = "UpdatedAt", serialize_with = "serialize_go_time")]
+    #[serde(rename = "UpdatedAt", serialize_with = "serialize_time")]
     pub updated_at: DateTime<Utc>,
-    #[serde(rename = "DeletedAt", serialize_with = "serialize_opt_go_time")]
+    #[serde(rename = "DeletedAt", serialize_with = "serialize_optional_time")]
     pub deleted_at: Option<DateTime<Utc>>,
     #[serde(rename = "Path")]
     pub path: String,
@@ -41,11 +41,11 @@ pub struct MediaItem {
 pub struct MediaDir {
     #[serde(rename = "ID")]
     pub id: i64,
-    #[serde(rename = "CreatedAt", serialize_with = "serialize_go_time")]
+    #[serde(rename = "CreatedAt", serialize_with = "serialize_time")]
     pub created_at: DateTime<Utc>,
-    #[serde(rename = "UpdatedAt", serialize_with = "serialize_go_time")]
+    #[serde(rename = "UpdatedAt", serialize_with = "serialize_time")]
     pub updated_at: DateTime<Utc>,
-    #[serde(rename = "DeletedAt", serialize_with = "serialize_opt_go_time")]
+    #[serde(rename = "DeletedAt", serialize_with = "serialize_optional_time")]
     pub deleted_at: Option<DateTime<Utc>>,
     #[serde(rename = "Path")]
     pub path: String,
@@ -57,11 +57,11 @@ pub struct MediaDir {
 pub struct FileExtension {
     #[serde(rename = "ID")]
     pub id: i64,
-    #[serde(rename = "CreatedAt", serialize_with = "serialize_go_time")]
+    #[serde(rename = "CreatedAt", serialize_with = "serialize_time")]
     pub created_at: DateTime<Utc>,
-    #[serde(rename = "UpdatedAt", serialize_with = "serialize_go_time")]
+    #[serde(rename = "UpdatedAt", serialize_with = "serialize_time")]
     pub updated_at: DateTime<Utc>,
-    #[serde(rename = "DeletedAt", serialize_with = "serialize_opt_go_time")]
+    #[serde(rename = "DeletedAt", serialize_with = "serialize_optional_time")]
     pub deleted_at: Option<DateTime<Utc>>,
     #[serde(rename = "Extension")]
     pub extension: String,
@@ -94,7 +94,7 @@ pub struct PlaylistEntry {
 pub struct Screenshot {
     pub name: String,
     pub url: String,
-    #[serde(serialize_with = "serialize_go_time")]
+    #[serde(serialize_with = "serialize_time")]
     pub modified_at: DateTime<Utc>,
 }
 
