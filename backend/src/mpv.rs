@@ -117,8 +117,8 @@ impl Mpv {
         }
     }
 
-    /// Restart mpv when it becomes unresponsive, exiting the daemon after
-    /// the same 10-restart limit as the Go implementation.
+    /// Restart mpv when it becomes unresponsive, exiting the daemon after the
+    /// same 10-restart limit as before.
     pub fn spawn_supervisor(self: &Arc<Self>, shutdown: watch::Sender<bool>) {
         let mpv = Arc::clone(self);
         std::thread::spawn(move || {

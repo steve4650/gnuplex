@@ -225,7 +225,7 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    /// Get a MediaItem by primary key, as GORM's `First(&item, id)` does.
+    /// Get a MediaItem by primary key.
     pub fn get_media_item_by_id(&self, id: u64) -> Result<Option<MediaItem>> {
         let conn = self.connection();
         conn.query_row(
@@ -238,7 +238,7 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
         .map_err(Into::into)
     }
 
-    /// Get a MediaItem by path, as GORM's `First(&item, "path = ?", path)` does.
+    /// Get a MediaItem by path.
     pub fn get_media_item_by_path(&self, path: &str) -> Result<Option<MediaItem>> {
         let conn = self.connection();
         conn.query_row(

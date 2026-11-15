@@ -19,8 +19,8 @@ use crate::consts;
 use crate::error::{Error, Result as AppResult};
 use crate::gnuplex::Gnuplex;
 use crate::models::{
-    CastBody, FilterBody, MediaItemsRes, PlayMediaBody, PosBody, SkipBody, SubBody, VersionInfo,
-    VolBody,
+    CastBody, FileExtension, FilterBody, MediaDir, MediaItem, MediaItemsRes, PlayMediaBody,
+    PosBody, Screenshot, SkipBody, SubBody, Track, VersionInfo, VolBody,
 };
 use crate::upgrade::upgrade_gnuplex;
 use crate::url::escape_relative_segment;
@@ -323,7 +323,7 @@ async fn api_skip(State(state): State<SharedState>) -> AppResult<StatusCode> {
 
 async fn api_now_playing(
     State(state): State<SharedState>,
-) -> AppResult<Json<Option<Vec<crate::models::MediaItem>>>> {
+) -> AppResult<Json<Option<Vec<MediaItem>>>> {
     let media = with_gnuplex(&state, |gnuplex| gnuplex.get_now_playing()).await?;
     Ok(Json(media))
 }
@@ -368,9 +368,7 @@ async fn api_set_vol(
     Ok(StatusCode::OK)
 }
 
-async fn api_get_media_dirs(
-    State(state): State<SharedState>,
-) -> AppResult<Json<Vec<crate::models::MediaDir>>> {
+async fn api_get_media_dirs(State(state): State<SharedState>) -> AppResult<Json<Vec<MediaDir>>> {
     let dirs = with_gnuplex(&state, |gnuplex| gnuplex.db.get_media_dirs()).await?;
     Ok(Json(dirs))
 }
@@ -385,7 +383,7 @@ async fn api_set_media_dirs(
 
 async fn api_get_file_exts(
     State(state): State<SharedState>,
-) -> AppResult<Json<Vec<crate::models::FileExtension>>> {
+) -> AppResult<Json<Vec<FileExtension>>> {
     let extensions = with_gnuplex(&state, |gnuplex| gnuplex.db.get_file_exts()).await?;
     Ok(Json(extensions))
 }
@@ -416,9 +414,7 @@ async fn api_set_pos(
     Ok(StatusCode::OK)
 }
 
-async fn api_last_25(
-    State(state): State<SharedState>,
-) -> AppResult<Json<Vec<crate::models::MediaItem>>> {
+async fn api_last_25(State(state): State<SharedState>) -> AppResult<Json<Vec<MediaItem>>> {
     let items = with_gnuplex(&state, |gnuplex| gnuplex.db.get_last_25_played()).await?;
     Ok(Json(items))
 }
@@ -439,9 +435,7 @@ async fn api_scan_lib(State(state): State<SharedState>) -> AppResult<StatusCode>
     Ok(StatusCode::OK)
 }
 
-async fn api_get_subs(
-    State(state): State<SharedState>,
-) -> AppResult<Json<Option<Vec<crate::models::Track>>>> {
+async fn api_get_subs(State(state): State<SharedState>) -> AppResult<Json<Option<Vec<Track>>>> {
     let subs = with_gnuplex(&state, |gnuplex| gnuplex.get_subs()).await?;
     Ok(Json(subs))
 }
@@ -521,7 +515,7 @@ async fn api_delete_queue_entry(
 async fn api_get_screenshots(
     State(state): State<SharedState>,
     Query(query): Query<ScreenshotsQuery>,
-) -> AppResult<Json<Vec<crate::models::Screenshot>>> {
+) -> AppResult<Json<Vec<Screenshot>>> {
     let limit = if query.limit == 0 { 10 } else { query.limit };
     let screenshots = with_gnuplex(&state, move |gnuplex| {
         gnuplex.list_recent_screenshots(limit)
@@ -530,9 +524,7 @@ async fn api_get_screenshots(
     Ok(Json(screenshots))
 }
 
-async fn api_take_screenshot(
-    State(state): State<SharedState>,
-) -> AppResult<Json<crate::models::Screenshot>> {
+async fn api_take_screenshot(State(state): State<SharedState>) -> AppResult<Json<Screenshot>> {
     let screenshot = with_gnuplex(&state, |gnuplex| gnuplex.take_screenshot()).await?;
     Ok(Json(screenshot))
 }

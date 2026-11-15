@@ -38,10 +38,10 @@ pub fn shift_subtitle_file(path: &Path, delta_seconds: f64) -> Result<()> {
     }
     let mut output = subtitles.compose_with(&ComposeOptions {
         line_ending: LineEnding::Lf,
-        // astisub always writes a UTF-8 BOM for SRT.
+        // The SRT format always includes a UTF-8 BOM.
         bom: format == Format::Srt,
     });
-    // astisub terminates every cue with a blank line except the final one.
+    // Every cue is terminated with a blank line except the final one.
     if format == Format::Srt && output.0.ends_with(b"\n\n") {
         output.0.pop();
     }
@@ -55,7 +55,7 @@ mod tests {
     use std::io::Write;
 
     #[test]
-    fn shifts_srt_like_astisub() {
+    fn shifts_srt_like_before() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.srt");
         let mut file = std::fs::File::create(&path).unwrap();
