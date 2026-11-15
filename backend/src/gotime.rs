@@ -1,7 +1,4 @@
-use std::io;
-
 use chrono::{DateTime, NaiveDateTime, SecondsFormat, TimeZone, Utc};
-use serde::Serialize;
 use serde::ser::Serializer;
 
 /// Format a timestamp exactly like Go's `time.Time.MarshalJSON`
@@ -67,42 +64,6 @@ where
         Some(dt) => serializer.serialize_some(&go_time_string(dt)),
         None => serializer.serialize_none(),
     }
-}
-
-/// serde_json formatter which performs the same HTML escaping that
-/// encoding/json does by default.
-struct GoFormatter;
-
-impl serde_json::ser::Formatter for GoFormatter {
-    fn write_string_fragment<W>(&mut self, writer: &mut W, fragment: &str) -> io::Result<()>
-    where
-        W: ?Sized + io::Write,
-    {
-        let mut start = 0;
-        for (idx, ch) in fragment.char_indices() {
-            let escaped = match ch {
-                '<' => Some("\\u003c"),
-                '>' => Some("\\u003e"),
-                '&' => Some("\\u0026"),
-                '\u{2028}' => Some("\\u2028"),
-                '\u{2029}' => Some("\\u2029"),
-                _ => None,
-            };
-            if let Some(escaped) = escaped {
-                writer.write_all(&fragment.as_bytes()[start..idx])?;
-                writer.write_all(escaped.as_bytes())?;
-                start = idx + ch.len_utf8();
-            }
-        }
-        writer.write_all(&fragment.as_bytes()[start..])
-    }
-}
-
-pub fn to_go_json<T: Serialize + ?Sized>(value: &T) -> Result<Vec<u8>, serde_json::Error> {
-    let mut out = Vec::new();
-    let mut serializer = serde_json::Serializer::with_formatter(&mut out, GoFormatter);
-    value.serialize(&mut serializer)?;
-    Ok(out)
 }
 
 #[cfg(test)]

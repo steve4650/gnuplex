@@ -57,7 +57,7 @@ def dev():
         subprocess.Popen("caddy run", shell=True),
         subprocess.Popen("bun run --cwd frontend dev", shell=True),
         subprocess.Popen(
-            "cargo run --manifest-path backend/Cargo.toml -- -verbose -static_files ./tmp -config_dir ./backend/mpv_config",
+            "cargo run --manifest-path backend/Cargo.toml -- --verbose --static-files ./tmp --config-dir ./backend/mpv_config",
             shell=True,
         ),
     ]
@@ -83,7 +83,7 @@ def dev_compiled():
     procs = [
         subprocess.Popen("caddy run --config Caddyfile-compiled", shell=True),
         subprocess.Popen(
-            "./backend/bin/gnuplex -verbose -static_files ./backend/static -config_dir ./backend/mpv_config",
+            "./backend/bin/gnuplex --verbose --static-files ./backend/static --config-dir ./backend/mpv_config",
             shell=True,
         ),
     ]

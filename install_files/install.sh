@@ -3,7 +3,7 @@ set -e
 PATH="$PATH:$HOME/.local/bin"
 echo "installing GNUPlex..."
 # dependencies
-echo "checking if GNUPlex exists; quitting if so. run \`gnuplex -upgrade\` to update GNUPlex instead"
+echo "checking if GNUPlex exists; quitting if so. run \`gnuplex --upgrade\` to update GNUPlex instead"
 if command -v gnuplex
 then
   exit 1
