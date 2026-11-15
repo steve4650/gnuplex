@@ -18,6 +18,7 @@ rusqlite = { version = "0.42.0", features = ["bundled", "functions"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 subcue = "0.1.1"
+thiserror = "2"
 tokio = { version = "1.54.1", features = [
   "macros",
   "net",
@@ -34,3 +35,6 @@ uuid = { version = "1.29.2", features = ["v4"] }
 strip = true
 lto = true
 codegen-units = 1
+
+[dev-dependencies]
+tempfile = "3"
