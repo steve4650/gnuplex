@@ -22,7 +22,7 @@ pub struct Gnuplex {
     pub mpv: Arc<Mpv>,
     pub screenshots_dir: PathBuf,
     pub static_files: PathBuf,
-    pub exe: String,
+    pub exe: PathBuf,
 }
 
 impl Gnuplex {
@@ -31,7 +31,7 @@ impl Gnuplex {
         mpv: Arc<Mpv>,
         screenshots_dir: PathBuf,
         static_files: PathBuf,
-        exe: String,
+        exe: PathBuf,
     ) -> Self {
         Self {
             db,
@@ -186,7 +186,7 @@ impl Gnuplex {
         if filename.is_empty() {
             return Ok(());
         }
-        subtitles::shift_subtitle_file(&filename, -delay).map_err(Error::Subtitle)?;
+        subtitles::shift_subtitle_file(&filename, -delay)?;
         self.mpv.sub_reload()?;
         self.mpv.set_sub_delay(0.0)
     }
