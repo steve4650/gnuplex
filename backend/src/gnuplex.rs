@@ -57,7 +57,9 @@ impl Gnuplex {
                 Ok(metadata) if metadata.is_dir() => {
                     walk_dir(Path::new(&media_dir.path), &file_ext_h, &mut batch);
                 }
-                Ok(_) => {}
+                Ok(_) => {
+                    warn!("skipping {} - not a directory", media_dir.path);
+                }
                 Err(err) => {
                     warn!(
                         "skipping {} - could not stat this directory: {err}",
@@ -223,13 +225,33 @@ fn walk_dir(dir: &Path, file_ext_h: &HashSet<String>, batch: &mut Vec<String>) {
         }
     };
     // filepath.WalkDir visits directory entries in lexical order.
-    let mut entries: Vec<_> = read_dir.filter_map(|e| e.ok()).collect();
+    let mut entries = Vec::new();
+    for entry in read_dir {
+        match entry {
+            Ok(entry) => entries.push(entry),
+            Err(err) => {
+                warn!(
+                    "Error 62b2b0e2-25d7-49db-a31a-5785c145229f: could not read an entry in {}: {err}",
+                    dir.display()
+                );
+            }
+        }
+    }
     entries.sort_by_key(|a| a.file_name());
     for entry in entries {
         let path = entry.path();
         // WalkDir does not follow symlinks to directories: they are treated
         // as files, exactly like Go's filepath.WalkDir.
-        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        let is_dir = match entry.file_type() {
+            Ok(file_type) => file_type.is_dir(),
+            Err(err) => {
+                warn!(
+                    "Error 62b2b0e2-25d7-49db-a31a-5785c145229f: could not read the file type for {}: {err}",
+                    path.display()
+                );
+                continue;
+            }
+        };
         if is_dir {
             walk_dir(&path, file_ext_h, batch);
             continue;
