@@ -10,7 +10,6 @@ mod subtitles;
 mod upgrade;
 mod web;
 
-use std::ffi::OsString;
 use std::process::exit;
 use std::sync::Arc;
 
@@ -58,7 +57,7 @@ struct Args {
     )]
     version: bool,
     /// Path to sqlite DB.
-    #[arg(long = "db_path", default_value = "gnuplex.sqlite3", value_hint = ValueHint::FilePath)]
+    #[arg(long, default_value = "gnuplex.sqlite3", value_hint = ValueHint::FilePath)]
     db_path: String,
     /// HTTP server's port.
     #[arg(long, default_value_t = 40000)]
@@ -74,23 +73,16 @@ struct Args {
     )]
     upgrade: bool,
     /// Directory containing config files and Lua scripts for mpv.
-    #[arg(
-        long = "config_dir",
-        default_value = "./mpv_config",
-        value_hint = ValueHint::DirPath
-    )]
+    #[arg(long, default_value = "./mpv_config", value_hint = ValueHint::DirPath)]
     config_dir: String,
     /// Path to static web files.
-    #[arg(
-        long = "static_files",
-        default_value = "static",
-        value_hint = ValueHint::DirPath
-    )]
+    #[arg(long, default_value = "static", value_hint = ValueHint::DirPath)]
     static_files: String,
 }
 
-fn main() {
-    let args = parse_args();
+#[tokio::main]
+async fn main() {
+    let args = Args::parse();
     init_logging(args.verbose);
     let exe = std::env::current_exe().unwrap_or_default();
 
@@ -107,21 +99,17 @@ fn main() {
     }
     if std::fs::read_dir(&args.config_dir).is_err() {
         error!(
-            "a895ec8b-8a76-48e9-a20e-3a7d562a10ca Could not read the -mpv_config directory {}",
+            "a895ec8b-8a76-48e9-a20e-3a7d562a10ca Could not read the --config-dir directory {}",
             args.config_dir
         );
         exit(1);
     }
     info!("GNUPlex Version {}", consts::VERSION);
 
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .expect("failed to start tokio runtime");
-    runtime.block_on(async_main(args, exe));
+    run(args, exe).await;
 }
 
-/// INFO logging by default; `-verbose` (passed by the dev scripts) enables
+/// INFO logging by default; `--verbose` (passed by the dev scripts) enables
 /// DEBUG logging.
 fn init_logging(verbose: bool) {
     let level = if verbose { Level::DEBUG } else { Level::INFO };
@@ -131,7 +119,7 @@ fn init_logging(verbose: bool) {
         .init();
 }
 
-async fn async_main(args: Args, exe: std::path::PathBuf) {
+async fn run(args: Args, exe: std::path::PathBuf) {
     let verbose = !args.prod || args.verbose;
     let screenshots_dir = screenshots::screenshots_dir(&args.static_files);
     if let Err(err) = std::fs::create_dir_all(&screenshots_dir) {
@@ -246,44 +234,11 @@ fn print_version() {
         platform: consts::PLATFORM.to_string(),
         go_version: consts::COMPILER_VERSION.to_string(),
     };
-    match gotime::to_go_json(&info) {
-        Ok(json) => println!("{}", String::from_utf8_lossy(&json)),
+    match serde_json::to_string(&info) {
+        Ok(json) => println!("{json}"),
         Err(_) => {
             error!("678f5d62-8c22-42bc-b25a-c5903b533312 failed to turn version info into JSON");
             exit(1);
         }
-    }
-}
-
-fn parse_args() -> Args {
-    // Go's flag package accepts both `-flag` and `--flag`. clap only treats
-    // `--flag` as a long option, so normalize the historical single-dash form
-    // before handing the arguments to clap.
-    let argv: Vec<OsString> = std::env::args_os().map(normalize_flag).collect();
-    Args::parse_from(argv)
-}
-
-fn normalize_flag(arg: OsString) -> OsString {
-    const LONG_FLAGS: &[&str] = &[
-        "prod",
-        "verbose",
-        "version",
-        "db_path",
-        "port",
-        "upgrade",
-        "config_dir",
-        "static_files",
-    ];
-    let Some(text) = arg.to_str() else {
-        return arg;
-    };
-    if !text.starts_with('-') || text.starts_with("--") || text == "-" {
-        return arg;
-    }
-    let name = text[1..].split('=').next().unwrap_or_default();
-    if LONG_FLAGS.contains(&name) {
-        OsString::from(format!("-{text}"))
-    } else {
-        arg
     }
 }
