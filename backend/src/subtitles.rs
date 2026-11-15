@@ -2,24 +2,31 @@ use std::path::Path;
 
 use subcue::{ComposeOptions, Format, LineEnding};
 
+use crate::error::{Error, Result};
+
 /// Shift every cue in a subtitle file by `delta_seconds` (positive means
 /// later) and rewrite the file in place.
-pub fn shift_subtitle_file(filename: &str, delta_seconds: f64) -> Result<(), String> {
+pub fn shift_subtitle_file(filename: &str, delta_seconds: f64) -> Result<()> {
     let path = Path::new(filename);
     let format = match path
         .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_lowercase())
+        .and_then(|extension| extension.to_str())
+        .map(str::to_lowercase)
         .as_deref()
     {
         Some("srt") => Format::Srt,
         Some("vtt") => Format::Vtt,
         Some("ass") | Some("ssa") => Format::Ass,
-        _ => return Err(format!("unsupported subtitle format: {filename}")),
+        _ => {
+            return Err(Error::Subtitle(format!(
+                "unsupported subtitle format: {filename}"
+            )));
+        }
     };
 
-    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
-    let mut subtitles = subcue::parse(&bytes, format).map_err(|e| e.to_string())?;
+    let bytes = std::fs::read(path)?;
+    let mut subtitles =
+        subcue::parse(&bytes, format).map_err(|err| Error::Subtitle(err.to_string()))?;
     let delta_ms = (delta_seconds * 1000.0).trunc() as i64;
     for cue in &mut subtitles.cues {
         cue.start.0 = cue.start.0.saturating_add(delta_ms);
@@ -38,7 +45,8 @@ pub fn shift_subtitle_file(filename: &str, delta_seconds: f64) -> Result<(), Str
     if format == Format::Srt && output.0.ends_with(b"\n\n") {
         output.0.pop();
     }
-    std::fs::write(path, output.0).map_err(|e| e.to_string())
+    std::fs::write(path, output.0)?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -48,22 +56,20 @@ mod tests {
 
     #[test]
     fn shifts_srt_like_astisub() {
-        let dir = std::env::temp_dir().join(format!("gnuplex-sub-test-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("test.srt");
-        let mut f = std::fs::File::create(&path).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.srt");
+        let mut file = std::fs::File::create(&path).unwrap();
         write!(
-            f,
+            file,
             "1\n00:00:20,000 --> 00:00:25,000\nHello\n\n2\n00:00:30,000 --> 00:00:35,000\nWorld\n"
         )
         .unwrap();
-        drop(f);
+        drop(file);
         shift_subtitle_file(path.to_str().unwrap(), -2.5).unwrap();
         let out = std::fs::read(&path).unwrap();
         assert_eq!(
             out,
             b"\xef\xbb\xbf1\n00:00:17,500 --> 00:00:22,500\nHello\n\n2\n00:00:27,500 --> 00:00:32,500\nWorld\n"
         );
-        std::fs::remove_dir_all(&dir).ok();
     }
 }

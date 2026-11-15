@@ -92,9 +92,7 @@ struct Args {
 fn main() {
     let args = parse_args();
     init_logging(args.verbose);
-    let exe = std::env::current_exe()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let exe = std::env::current_exe().unwrap_or_default();
 
     if args.upgrade {
         if let Err(err) = upgrade::upgrade_gnuplex(&exe, true) {
@@ -133,7 +131,7 @@ fn init_logging(verbose: bool) {
         .init();
 }
 
-async fn async_main(args: Args, exe: String) {
+async fn async_main(args: Args, exe: std::path::PathBuf) {
     let verbose = !args.prod || args.verbose;
     let screenshots_dir = screenshots::screenshots_dir(&args.static_files);
     if let Err(err) = std::fs::create_dir_all(&screenshots_dir) {

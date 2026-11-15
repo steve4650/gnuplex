@@ -27,7 +27,7 @@ use crate::upgrade::upgrade_gnuplex;
 
 pub struct AppState {
     pub gnuplex: Arc<Gnuplex>,
-    pub exe: String,
+    pub exe: std::path::PathBuf,
     pub shutdown: watch::Sender<bool>,
 }
 
