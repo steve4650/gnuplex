@@ -12,6 +12,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use tokio::sync::watch;
+use tracing::info;
 
 use crate::consts;
 use crate::gnuplex::Gnuplex;
@@ -693,10 +694,10 @@ async fn api_upgrade(State(state): State<SharedState>) -> Response {
     match upgrade_gnuplex(&state.exe, false) {
         Ok(upgraded) => {
             if upgraded {
-                println!("Upgraded and going into shutdown");
+                info!("Upgraded and going into shutdown");
                 let _ = state.shutdown.send(true);
             } else {
-                println!("Already up to date");
+                info!("Already up to date");
             }
             empty_response(StatusCode::OK)
         }

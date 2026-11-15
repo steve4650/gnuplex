@@ -16,6 +16,7 @@ use std::sync::Arc;
 use chrono::{Local, Timelike};
 use clap::{ArgAction, Parser, ValueHint};
 use tokio::sync::watch;
+use tracing::{Level, error, info, warn};
 
 use crate::db::Db;
 use crate::gnuplex::Gnuplex;
@@ -89,13 +90,14 @@ struct Args {
 
 fn main() {
     let args = parse_args();
+    init_logging(!args.prod || args.verbose);
     let exe = std::env::current_exe()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
 
     if args.upgrade {
         if let Err(err) = upgrade::upgrade_gnuplex(&exe, true) {
-            eprintln!("7a7233a9-262a-4bf6-8229-43855d3852d2 Could not upgrade GNUPlex: {err}");
+            error!("7a7233a9-262a-4bf6-8229-43855d3852d2 Could not upgrade GNUPlex: {err}");
             exit(1);
         }
         exit(0);
@@ -105,13 +107,13 @@ fn main() {
         exit(0);
     }
     if std::fs::read_dir(&args.config_dir).is_err() {
-        eprintln!(
+        error!(
             "a895ec8b-8a76-48e9-a20e-3a7d562a10ca Could not read the -mpv_config directory {}",
             args.config_dir
         );
         exit(1);
     }
-    println!("GNUPlex Version {}", consts::VERSION);
+    info!("GNUPlex Version {}", consts::VERSION);
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -120,24 +122,32 @@ fn main() {
     runtime.block_on(async_main(args, exe));
 }
 
+fn init_logging(verbose: bool) {
+    let level = if verbose { Level::DEBUG } else { Level::INFO };
+    tracing_subscriber::fmt()
+        .with_max_level(level)
+        .with_target(false)
+        .init();
+}
+
 async fn async_main(args: Args, exe: String) {
     let verbose = !args.prod || args.verbose;
     let screenshots_dir = screenshots::screenshots_dir(&args.static_files);
     if let Err(err) = std::fs::create_dir_all(&screenshots_dir) {
-        eprintln!("failed to create screenshots directory: {err}");
+        error!("failed to create screenshots directory: {err}");
         exit(1);
     }
     let mpv = match Mpv::init(verbose, &args.config_dir) {
         Ok(mpv) => mpv,
         Err(err) => {
-            eprintln!("{err}");
+            error!("{err}");
             exit(1);
         }
     };
     let db = match Db::init(&args.db_path, verbose) {
         Ok(db) => db,
         Err(err) => {
-            eprintln!("{err}");
+            error!("{err}");
             exit(1);
         }
     };
@@ -161,7 +171,7 @@ async fn async_main(args: Args, exe: String) {
     let listener = match tokio::net::TcpListener::bind(&bind_addr).await {
         Ok(listener) => listener,
         Err(err) => {
-            eprintln!("e6c1f9ee-681d-4eb4-b487-d86622e07aac Server error: {err}");
+            error!("e6c1f9ee-681d-4eb4-b487-d86622e07aac Server error: {err}");
             exit(1);
         }
     };
@@ -179,7 +189,7 @@ async fn async_main(args: Args, exe: String) {
         .with_graceful_shutdown(shutdown)
         .await
     {
-        eprintln!("e6c1f9ee-681d-4eb4-b487-d86622e07aac Server error: {err}");
+        error!("e6c1f9ee-681d-4eb4-b487-d86622e07aac Server error: {err}");
     }
 }
 
@@ -191,37 +201,37 @@ async fn scheduler(gnuplex: Arc<Gnuplex>, shutdown: watch::Sender<bool>) {
         let date = now.date_naive();
         if now.hour() == 1 && now.minute() == 15 && last_scan != Some(date) {
             last_scan = Some(date);
-            println!("running ScanLib job");
+            info!("running ScanLib job");
             if let Err(err) = gnuplex.scan_lib() {
-                println!("scanlib job failed: {err}");
+                error!("scanlib job failed: {err}");
             }
         }
         if now.hour() == 2 && now.minute() == 15 && last_update != Some(date) {
             last_update = Some(date);
-            println!("Running update job");
+            info!("Running update job");
             match gnuplex.get_now_playing() {
                 Ok(Some(paths)) => {
                     if !paths.is_empty() {
-                        println!(
+                        warn!(
                             "a3b99261-331c-4484-a9fb-358b66f364f2 Not updating; something is playing"
                         );
                     }
                 }
                 Ok(None) => {}
                 Err(err) => {
-                    println!(
-                        "857034c0-a7db-4aa8-8cdf-00d0b6d811c2 Failed to retrive NowPlaying: {err}"
+                    error!(
+                        "857034c0-a7db-4aa8-8cdf-00d0b6d811c2 Failed to retrieve NowPlaying: {err}"
                     );
                     continue;
                 }
             }
             match upgrade::upgrade_gnuplex(&gnuplex.exe, false) {
                 Ok(true) => {
-                    println!("Updated GNUPlex. Quitting");
+                    info!("Updated GNUPlex. Quitting");
                     let _ = shutdown.send(true);
                 }
                 Ok(false) => {}
-                Err(err) => println!("upgrade job failed: {err}"),
+                Err(err) => error!("upgrade job failed: {err}"),
             }
         }
         tokio::time::sleep(std::time::Duration::from_secs(20)).await;
@@ -238,7 +248,7 @@ fn print_version() {
     match gotime::to_go_json(&info) {
         Ok(json) => println!("{}", String::from_utf8_lossy(&json)),
         Err(_) => {
-            eprintln!("678f5d62-8c22-42bc-b25a-c5903b533312 failed to turn version info into JSON");
+            error!("678f5d62-8c22-42bc-b25a-c5903b533312 failed to turn version info into JSON");
             exit(1);
         }
     }

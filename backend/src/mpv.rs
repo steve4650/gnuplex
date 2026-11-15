@@ -8,6 +8,7 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use tokio::sync::watch;
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::models::{PlaylistEntry, Track};
@@ -75,7 +76,7 @@ impl Mpv {
             .stdin(Stdio::null())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit());
-        log("starting mpv process");
+        info!("starting mpv process");
         let child = command
             .spawn()
             .map_err(|e| format!("1b2b2f70-d75c-4ee4-b977-95f7272f72e9: mpvdaemon.Run: {e}"))?;
@@ -90,7 +91,7 @@ impl Mpv {
                     let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
                     *self.conn.lock().unwrap_or_else(|e| e.into_inner()) =
                         Some(BufReader::new(stream));
-                    log("Established unix socket connection to mpv.");
+                    info!("Established unix socket connection to mpv.");
                     return Ok(());
                 }
                 Err(err) => {
@@ -99,9 +100,9 @@ impl Mpv {
                             "84c2ca00-1df2-4af5-8bd4-9248d941ad7d: could not establish a unix socket connection to {socket_path}: {err}"
                         ));
                     }
-                    log(&format!(
+                    warn!(
                         "Warning 6b94b8d9-9992-4276-8f6f-4d1b339cb59a: could not init unix socket to mpv, trying again in 2 seconds. {err}"
-                    ));
+                    );
                     std::thread::sleep(Duration::from_secs(2));
                 }
             }
@@ -115,13 +116,13 @@ impl Mpv {
         std::thread::spawn(move || {
             loop {
                 if mpv.ping().is_err() {
-                    log(
-                        "Error b304c2bb-a940-4a3e-979d-2939e986ed87: failed to ping MPV. restarting MPV.",
+                    error!(
+                        "Error b304c2bb-a940-4a3e-979d-2939e986ed87: failed to ping MPV. restarting MPV."
                     );
                     if let Err(err) = mpv.restart_process() {
-                        log(&format!(
+                        error!(
                             "Error c7b92229-b6b8-4800-91d6-8b8afb733d9c: failed to restart MPV. stopping gnuplex: {err}"
-                        ));
+                        );
                         let _ = shutdown.send(true);
                         return;
                     }
@@ -325,8 +326,4 @@ impl Mpv {
         };
         self.set(json!(["set_property", "vf", filter_cmd]))
     }
-}
-
-fn log(message: &str) {
-    println!("{message}");
 }
