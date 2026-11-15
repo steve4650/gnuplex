@@ -19,6 +19,10 @@ pub struct Db {
 impl Db {
     pub fn init(path: impl AsRef<Path>) -> Result<Self> {
         let conn = Connection::open(path)?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        conn.execute_batch(
+            "PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON;",
+        )?;
         conn.create_scalar_function(
             "regexp",
             2,
@@ -340,6 +344,7 @@ pub fn build_search_regex(search: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::timestamps::rfc3339_string;
 
     #[test]
     fn build_search_regex_escapes_terms() {
@@ -428,5 +433,54 @@ mod tests {
         let items = db.get_media_items("", 0).unwrap().0;
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].path, "/a.mkv");
+    }
+
+    #[test]
+    fn legacy_gorm_database_boots_and_parses_timestamps() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("legacy.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                r#"
+CREATE TABLE `media_items` (`id` integer PRIMARY KEY AUTOINCREMENT,`created_at` datetime,`updated_at` datetime,`deleted_at` datetime,`path` text,`last_played` text,`temp` numeric DEFAULT false,`type` integer,`last_scan_uuid` text);
+CREATE UNIQUE INDEX `idx_media_items_path` ON `media_items`(`path`);
+INSERT INTO media_items (created_at, updated_at, deleted_at, path, last_played, temp, type, last_scan_uuid)
+VALUES ('2021-05-01 12:34:56.789+00:00', '2021-05-01 12:34:57.5+00:00', NULL, '/media/legacy.mkv', '2022-01-02 03:04:05.25+00:00', 0, 1, 'scan-legacy');
+INSERT INTO media_items (created_at, updated_at, deleted_at, path, last_played, temp, type, last_scan_uuid)
+VALUES ('2021-05-02 01:02:03', '2021-05-02 01:02:04', '2021-05-03 05:06:07', '/media/deleted.mkv', '', 0, 1, 'scan-legacy');
+CREATE TABLE `media_dirs` (`id` integer PRIMARY KEY AUTOINCREMENT,`created_at` datetime,`updated_at` datetime,`deleted_at` datetime,`path` text,`last_scanned` text);
+INSERT INTO media_dirs (created_at, updated_at, path, last_scanned)
+VALUES ('2021-05-01 12:34:56.789+00:00', '2021-05-01 12:34:56.789+00:00', '/media', '2021-05-01T12:34:56Z');
+CREATE TABLE `file_extensions` (`id` integer PRIMARY KEY AUTOINCREMENT,`created_at` datetime,`updated_at` datetime,`deleted_at` datetime,`extension` text);
+INSERT INTO file_extensions (created_at, updated_at, extension)
+VALUES ('2021-05-01 12:34:56.789+00:00', '2021-05-01 12:34:56.789+00:00', 'mkv');
+"#,
+            )
+            .unwrap();
+        }
+
+        let db = Db::init(&path).unwrap();
+
+        let (items, count) = db.get_media_items("", 0).unwrap();
+        assert_eq!(count, 1);
+        let item = &items[0];
+        assert_eq!(item.path, "/media/legacy.mkv");
+        assert_eq!(rfc3339_string(&item.created_at), "2021-05-01T12:34:56.789Z");
+        assert_eq!(rfc3339_string(&item.updated_at), "2021-05-01T12:34:57.5Z");
+        assert_eq!(item.deleted_at, None);
+        assert_eq!(item.last_played, "2022-01-02 03:04:05.25+00:00");
+
+        let dirs = db.get_media_dirs().unwrap();
+        assert_eq!(dirs.len(), 1);
+        assert_eq!(dirs[0].path, "/media");
+        assert_eq!(
+            rfc3339_string(&dirs[0].created_at),
+            "2021-05-01T12:34:56.789Z"
+        );
+
+        let exts = db.get_file_exts().unwrap();
+        assert_eq!(exts.len(), 1);
+        assert_eq!(exts[0].extension, "mkv");
     }
 }
