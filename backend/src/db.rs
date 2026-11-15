@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+use std::path::Path;
 use std::sync::Mutex;
 
 use chrono::{DateTime, Utc};
@@ -6,6 +8,7 @@ use rusqlite::functions::FunctionFlags;
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 
+use crate::error::Result;
 use crate::gotime::{db_time_string, parse_db_time};
 use crate::models::{FileExtension, MEDIA_TYPE_FILE, MEDIA_TYPE_URL, MediaDir, MediaItem};
 
@@ -14,7 +17,7 @@ pub struct Db {
 }
 
 impl Db {
-    pub fn init(path: &str, _verbose: bool) -> rusqlite::Result<Self> {
+    pub fn init(path: impl AsRef<Path>) -> Result<Self> {
         let conn = Connection::open(path)?;
         conn.create_scalar_function(
             "regexp",
@@ -53,20 +56,16 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
     }
 
     /// Update a MediaItem's LastPlayed attribute to be the current time.
-    pub fn update_last_played(&self, id: i64) -> rusqlite::Result<()> {
-        let now = Utc::now();
+    pub fn update_last_played(&self, id: i64) -> Result<()> {
+        let now = db_time_string(&Utc::now());
         self.connection().execute(
             "UPDATE media_items SET last_played = ?, updated_at = ? WHERE id = ?",
-            params![
-                now.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
-                db_time_string(&now),
-                id
-            ],
+            params![now, now, id],
         )?;
         Ok(())
     }
 
-    pub fn get_file_exts(&self) -> rusqlite::Result<Vec<FileExtension>> {
+    pub fn get_file_exts(&self) -> Result<Vec<FileExtension>> {
         let conn = self.connection();
         let mut stmt = conn.prepare(
             "SELECT id, created_at, updated_at, deleted_at, extension FROM file_extensions WHERE deleted_at IS NULL",
@@ -80,30 +79,36 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
                 extension: row.get(4)?,
             })
         })?;
-        rows.collect()
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     /// Replace the configured list of file extensions.
-    pub fn set_file_exts(&self, extensions: &[String]) -> rusqlite::Result<()> {
+    pub fn set_file_exts(&self, extensions: &[String]) -> Result<()> {
+        let mut extensions: Vec<String> = extensions
+            .iter()
+            .map(|extension| extension.to_lowercase())
+            .collect();
+        extensions.sort_unstable();
+        extensions.dedup();
+
+        let now = db_time_string(&Utc::now());
         let mut conn = self.connection();
         let tx = conn.transaction()?;
-        tx.execute("DELETE FROM file_extensions WHERE 1 = 1", [])?;
-        for extension in extensions {
-            let now = Utc::now();
-            tx.execute(
+        tx.execute("DELETE FROM file_extensions", [])?;
+        {
+            let mut stmt = tx.prepare(
                 "INSERT INTO file_extensions (created_at, updated_at, deleted_at, extension) \
-                 VALUES (?, ?, NULL, ?) ON CONFLICT DO NOTHING",
-                params![
-                    db_time_string(&now),
-                    db_time_string(&now),
-                    extension.to_lowercase()
-                ],
+                 VALUES (?, ?, NULL, ?)",
             )?;
+            for extension in &extensions {
+                stmt.execute(params![now, now, extension])?;
+            }
         }
-        tx.commit()
+        tx.commit()?;
+        Ok(())
     }
 
-    pub fn get_media_dirs(&self) -> rusqlite::Result<Vec<MediaDir>> {
+    pub fn get_media_dirs(&self) -> Result<Vec<MediaDir>> {
         let conn = self.connection();
         let mut stmt = conn.prepare(
             "SELECT id, created_at, updated_at, deleted_at, path, last_scanned \
@@ -119,11 +124,11 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
                 last_scanned: row.get(5)?,
             })
         })?;
-        rows.collect()
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     /// Set the configured list of directories to scan for MediaItems.
-    pub fn set_media_dirs(&self, media_dirs: &[String]) -> rusqlite::Result<()> {
+    pub fn set_media_dirs(&self, media_dirs: &[String]) -> Result<()> {
         let mut conn = self.connection();
         let existing = {
             let mut stmt = conn.prepare(
@@ -135,8 +140,7 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
             rows.collect::<rusqlite::Result<Vec<_>>>()?
         };
         let tx = conn.transaction()?;
-        let wanted: std::collections::HashSet<&str> =
-            media_dirs.iter().map(String::as_str).collect();
+        let wanted: HashSet<&str> = media_dirs.iter().map(String::as_str).collect();
         for dir in media_dirs {
             let now = Utc::now();
             tx.execute(
@@ -150,11 +154,11 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
                 tx.execute("DELETE FROM media_dirs WHERE id = ?", params![id])?;
             }
         }
-        tx.commit()
+        Ok(tx.commit()?)
     }
 
     /// Get the most recent 25 played MediaItems.
-    pub fn get_last_25_played(&self) -> rusqlite::Result<Vec<MediaItem>> {
+    pub fn get_last_25_played(&self) -> Result<Vec<MediaItem>> {
         let conn = self.connection();
         let mut stmt = conn.prepare(
             "SELECT id, created_at, updated_at, deleted_at, path, last_played, temp, type, last_scan_uuid \
@@ -162,15 +166,11 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
              ORDER BY last_played desc LIMIT 25",
         )?;
         let rows = stmt.query_map([], read_media_item)?;
-        rows.collect()
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     /// Get all MediaItems which match the given search string.
-    pub fn get_media_items(
-        &self,
-        search: &str,
-        offset: i64,
-    ) -> rusqlite::Result<(Vec<MediaItem>, i64)> {
+    pub fn get_media_items(&self, search: &str, offset: i64) -> Result<(Vec<MediaItem>, i64)> {
         let search = search.trim();
         let conn = self.connection();
         if search.is_empty() {
@@ -204,7 +204,7 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
         Ok((items, count))
     }
 
-    pub fn get_media_items_by_paths(&self, paths: &[String]) -> rusqlite::Result<Vec<MediaItem>> {
+    pub fn get_media_items_by_paths(&self, paths: &[String]) -> Result<Vec<MediaItem>> {
         if paths.is_empty() {
             return Ok(Vec::new());
         }
@@ -218,11 +218,11 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
         let conn = self.connection();
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(params_from_iter(paths.iter()), read_media_item)?;
-        rows.collect()
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     /// Get a MediaItem by primary key, as GORM's `First(&item, id)` does.
-    pub fn get_media_item_by_id(&self, id: u64) -> rusqlite::Result<Option<MediaItem>> {
+    pub fn get_media_item_by_id(&self, id: u64) -> Result<Option<MediaItem>> {
         let conn = self.connection();
         conn.query_row(
             "SELECT id, created_at, updated_at, deleted_at, path, last_played, temp, type, last_scan_uuid \
@@ -231,10 +231,11 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
             read_media_item,
         )
         .optional()
+        .map_err(Into::into)
     }
 
     /// Get a MediaItem by path, as GORM's `First(&item, "path = ?", path)` does.
-    pub fn get_media_item_by_path(&self, path: &str) -> rusqlite::Result<Option<MediaItem>> {
+    pub fn get_media_item_by_path(&self, path: &str) -> Result<Option<MediaItem>> {
         let conn = self.connection();
         conn.query_row(
             "SELECT id, created_at, updated_at, deleted_at, path, last_played, temp, type, last_scan_uuid \
@@ -243,9 +244,10 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
             read_media_item,
         )
         .optional()
+        .map_err(Into::into)
     }
 
-    pub fn delete_media_item_files_not_matching_uuid(&self, uuid: &str) -> rusqlite::Result<()> {
+    pub fn delete_media_item_files_not_matching_uuid(&self, uuid: &str) -> Result<()> {
         self.connection().execute(
             "DELETE FROM media_items WHERE last_scan_uuid != ? AND type = ?",
             params![uuid, MEDIA_TYPE_FILE],
@@ -253,11 +255,7 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
         Ok(())
     }
 
-    pub fn add_media_item_file_batch(
-        &self,
-        paths: &[String],
-        last_scan_uuid: &str,
-    ) -> rusqlite::Result<()> {
+    pub fn add_media_item_file_batch(&self, paths: &[String], last_scan_uuid: &str) -> Result<()> {
         if paths.is_empty() {
             return Ok(());
         }
@@ -288,10 +286,10 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
             );
             tx.execute(&sql, params_from_iter(values))?;
         }
-        tx.commit()
+        Ok(tx.commit()?)
     }
 
-    pub fn add_media_item_url(&self, url: &str) -> rusqlite::Result<()> {
+    pub fn add_media_item_url(&self, url: &str) -> Result<()> {
         let now = Utc::now();
         self.connection().execute(
             "INSERT INTO media_items \
@@ -335,40 +333,21 @@ fn read_media_item(row: &rusqlite::Row<'_>) -> rusqlite::Result<MediaItem> {
 }
 
 /// Convert a user search string into a safe, case-insensitive regex pattern.
-/// Successive spaces in search turn into .* in regex, and special regex
-/// characters are escaped exactly like Go's regexp.QuoteMeta.
+/// Whitespace separates terms, which may be interspersed with any text.
 pub fn build_search_regex(search: &str) -> String {
-    let fields: Vec<String> = search
-        .split_whitespace()
-        .map(quote_meta)
-        .collect::<Vec<_>>();
+    let fields: Vec<String> = search.split_whitespace().map(regex::escape).collect();
     if fields.is_empty() {
         return String::new();
     }
     format!("(?i){}", fields.join(".*"))
 }
 
-fn quote_meta(field: &str) -> String {
-    let mut out = String::with_capacity(field.len());
-    for ch in field.chars() {
-        if matches!(
-            ch,
-            '\\' | '.' | '+' | '*' | '?' | '(' | ')' | '|' | '[' | ']' | '{' | '}' | '^' | '$'
-        ) {
-            out.push('\\');
-        }
-        out.push(ch);
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::MediaItem as Item;
 
     #[test]
-    fn build_search_regex_matches_go() {
+    fn build_search_regex_escapes_terms() {
         let tests = [
             ("", ""),
             ("   ", ""),
@@ -386,9 +365,8 @@ mod tests {
 
     #[test]
     fn media_items_queries_work() {
-        let dir = std::env::temp_dir().join(format!("gnuplex-db-test-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let db = Db::init(dir.join("test.db").to_str().unwrap(), false).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::init(dir.path().join("test.db")).unwrap();
         let paths = [
             "/media/Sopranos (1999) -    S02E01.mkv",
             "/media/Sopranos S01E01.mkv",
@@ -430,14 +408,12 @@ mod tests {
                 assert_eq!(items[0].path, first, "search {search:?}");
             }
         }
-        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
     fn add_and_delete_files() {
-        let dir = std::env::temp_dir().join(format!("gnuplex-db-test-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let db = Db::init(dir.join("test.db").to_str().unwrap(), false).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::init(dir.path().join("test.db")).unwrap();
         db.add_media_item_file_batch(&["/a.mkv".to_string(), "/b.mkv".to_string()], "scan-1")
             .unwrap();
         db.add_media_item_file_batch(&["/a.mkv".to_string()], "scan-2")
@@ -457,18 +433,5 @@ mod tests {
         let items = db.get_media_items("", 0).unwrap().0;
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].path, "/a.mkv");
-        let _ = Item {
-            id: 0,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            deleted_at: None,
-            path: String::new(),
-            last_played: String::new(),
-            temp: false,
-            media_type: MEDIA_TYPE_FILE,
-            last_scan_uuid: String::new(),
-            queue_id: None,
-        };
-        std::fs::remove_dir_all(&dir).ok();
     }
 }

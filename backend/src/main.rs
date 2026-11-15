@@ -1,5 +1,6 @@
 mod consts;
 mod db;
+mod error;
 mod gnuplex;
 mod gotime;
 mod models;
@@ -146,7 +147,7 @@ async fn async_main(args: Args, exe: String) {
             exit(1);
         }
     };
-    let db = match Db::init(&args.db_path, verbose) {
+    let db = match Db::init(&args.db_path) {
         Ok(db) => db,
         Err(err) => {
             error!("{err}");
