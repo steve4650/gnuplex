@@ -1,6 +1,6 @@
 use std::io;
 
-use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, NaiveDateTime, SecondsFormat, TimeZone, Utc};
 use serde::Serialize;
 use serde::ser::Serializer;
 
@@ -18,34 +18,30 @@ pub fn go_time_string(dt: &DateTime<Utc>) -> String {
     }
 }
 
-/// Format a timestamp like GORM's SQLite driver stores it:
-/// `2006-01-02 15:04:05.999999999-07:00`.
+/// Format a timestamp for SQLite storage.
+///
+/// RFC3339 with a numeric UTC offset is understood by SQLite's date functions,
+/// by the old Go/GORM backend, and by this backend, so stored rows remain
+/// usable in both directions.
 pub fn db_time_string(dt: &DateTime<Utc>) -> String {
-    let base = dt.format("%Y-%m-%d %H:%M:%S").to_string();
-    let nanos = dt.timestamp_subsec_nanos();
-    if nanos == 0 {
-        format!("{base}+00:00")
-    } else {
-        let frac = format!("{nanos:09}");
-        let frac = frac.trim_end_matches('0');
-        format!("{base}.{frac}+00:00")
-    }
+    dt.to_rfc3339_opts(SecondsFormat::AutoSi, false)
 }
 
-/// Parse the timestamp strings written by the Go/GORM backend.
+/// Parse timestamp strings written by this backend or the old Go/GORM one.
 pub fn parse_db_time(s: &str) -> Option<DateTime<Utc>> {
-    const FORMATS: &[&str] = &[
+    if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+        return Some(dt.with_timezone(&Utc));
+    }
+    // Rows written by GORM use a space separator and may omit the offset.
+    const LEGACY_FORMATS: &[&str] = &[
         "%Y-%m-%d %H:%M:%S%.f%:z",
-        "%Y-%m-%dT%H:%M:%S%.f%:z",
         "%Y-%m-%d %H:%M:%S%.f%#z",
-        "%Y-%m-%dT%H:%M:%S%.f%#z",
+        "%Y-%m-%d %H:%M:%S%.f",
     ];
-    for f in FORMATS {
+    for f in LEGACY_FORMATS {
         if let Ok(dt) = DateTime::parse_from_str(s, f) {
             return Some(dt.with_timezone(&Utc));
         }
-    }
-    for f in ["%Y-%m-%d %H:%M:%S%.f", "%Y-%m-%dT%H:%M:%S%.f"] {
         if let Ok(naive) = NaiveDateTime::parse_from_str(s, f) {
             return Some(Utc.from_utc_datetime(&naive));
         }
@@ -147,7 +143,7 @@ mod tests {
             .with_nanosecond(127_656_750)
             .unwrap();
         assert_eq!(go_time_string(&dt), "2026-11-14T16:15:15.12765675Z");
-        assert_eq!(db_time_string(&dt), "2026-11-14 16:15:15.12765675+00:00");
+        assert_eq!(db_time_string(&dt), "2026-11-14T16:15:15.127656750+00:00");
         assert_eq!(
             go_time_string(&Utc.with_ymd_and_hms(2026, 11, 14, 16, 15, 15).unwrap()),
             "2026-11-14T16:15:15Z"
@@ -156,9 +152,23 @@ mod tests {
 
     #[test]
     fn parses_db_times() {
+        // Legacy GORM rows.
         let dt = parse_db_time("2026-11-14 16:15:15.151284955+00:00").unwrap();
         assert_eq!(go_time_string(&dt), "2026-11-14T16:15:15.151284955Z");
+        // New RFC3339 rows.
+        let dt = parse_db_time("2026-11-14T16:15:15.151284955+00:00").unwrap();
+        assert_eq!(go_time_string(&dt), "2026-11-14T16:15:15.151284955Z");
         assert!(parse_db_time("not a time").is_none());
+    }
+
+    #[test]
+    fn db_times_round_trip() {
+        let dt = Utc
+            .with_ymd_and_hms(2026, 11, 14, 16, 15, 15)
+            .unwrap()
+            .with_nanosecond(127_656_750)
+            .unwrap();
+        assert_eq!(parse_db_time(&db_time_string(&dt)), Some(dt));
     }
 
     #[test]
