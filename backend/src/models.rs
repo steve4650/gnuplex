@@ -69,32 +69,24 @@ pub struct FileExtension {
 
 /// An mpv subtitle track. This is not stored in the database.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Track {
-    #[serde(default)]
     pub id: i64,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub title: String,
-    #[serde(rename = "type", default)]
+    #[serde(rename = "type")]
     pub track_type: String,
-    #[serde(default)]
     pub selected: bool,
-    #[serde(default)]
     pub external: bool,
-    #[serde(
-        rename = "external-filename",
-        default,
-        skip_serializing_if = "String::is_empty"
-    )]
+    #[serde(rename = "external-filename", skip_serializing_if = "String::is_empty")]
     pub external_filename: String,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
 pub struct PlaylistEntry {
-    #[serde(default)]
     pub filename: String,
-    #[serde(default)]
     pub id: i64,
-    #[serde(default)]
     pub current: bool,
 }
 
@@ -172,4 +164,24 @@ pub struct FilterBody {
 #[serde(default)]
 pub struct SkipBody {
     pub skip: i64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_fields_default_to_zero_values() {
+        // Go's encoding/json zeroes absent fields rather than rejecting the body.
+        let body: PlayMediaBody = serde_json::from_str(r#"{"play_next":true}"#).unwrap();
+        assert_eq!(body.id, 0);
+        assert!(body.play_next);
+        assert!(!body.play_last);
+
+        let track: Track = serde_json::from_str(r#"{"id":3,"type":"sub"}"#).unwrap();
+        assert_eq!(track.id, 3);
+        assert_eq!(track.track_type, "sub");
+        assert_eq!(track.title, "");
+        assert!(!track.external);
+    }
 }
