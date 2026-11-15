@@ -9,8 +9,8 @@ use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 
 use crate::error::Result;
-use crate::gotime::{db_time_string, parse_db_time};
 use crate::models::{FileExtension, MEDIA_TYPE_FILE, MEDIA_TYPE_URL, MediaDir, MediaItem};
+use crate::timestamps::{parse_db_time, to_db_time};
 
 pub struct Db {
     conn: Mutex<Connection>,
@@ -57,7 +57,7 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
 
     /// Update a MediaItem's LastPlayed attribute to be the current time.
     pub fn update_last_played(&self, id: i64) -> Result<()> {
-        let now = db_time_string(&Utc::now());
+        let now = to_db_time(&Utc::now());
         self.connection().execute(
             "UPDATE media_items SET last_played = ?, updated_at = ? WHERE id = ?",
             params![now, now, id],
@@ -91,7 +91,7 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
         extensions.sort_unstable();
         extensions.dedup();
 
-        let now = db_time_string(&Utc::now());
+        let now = to_db_time(&Utc::now());
         let mut conn = self.connection();
         let tx = conn.transaction()?;
         tx.execute("DELETE FROM file_extensions", [])?;
@@ -146,7 +146,7 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
             tx.execute(
                 "INSERT INTO media_dirs (created_at, updated_at, deleted_at, path, last_scanned) \
                  VALUES (?, ?, NULL, ?, '') ON CONFLICT DO NOTHING",
-                params![db_time_string(&now), db_time_string(&now), dir],
+                params![to_db_time(&now), to_db_time(&now), dir],
             )?;
         }
         for (id, path) in existing {
@@ -263,8 +263,8 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
         let tx = conn.transaction()?;
         for chunk in paths.chunks(100) {
             let now = Utc::now();
-            let created = db_time_string(&now);
-            let updated = db_time_string(&now);
+            let created = to_db_time(&now);
+            let updated = to_db_time(&now);
             let mut values = Vec::with_capacity(chunk.len() * 8);
             let mut sql = String::from(
                 "INSERT INTO media_items \
@@ -295,12 +295,7 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
             "INSERT INTO media_items \
              (created_at, updated_at, deleted_at, path, last_played, temp, type, last_scan_uuid) \
              VALUES (?, ?, NULL, ?, '', 0, ?, '') ON CONFLICT DO NOTHING",
-            params![
-                db_time_string(&now),
-                db_time_string(&now),
-                url,
-                MEDIA_TYPE_URL
-            ],
+            params![to_db_time(&now), to_db_time(&now), url, MEDIA_TYPE_URL],
         )?;
         Ok(())
     }
@@ -381,7 +376,7 @@ mod tests {
                 conn.execute(
                     "INSERT INTO media_items (created_at, updated_at, deleted_at, path, last_played, temp, type, last_scan_uuid) \
                      VALUES (?, ?, NULL, ?, '', 0, 1, '')",
-                    params![db_time_string(&now), db_time_string(&now), path],
+                    params![to_db_time(&now), to_db_time(&now), path],
                 )
                 .unwrap();
             }
