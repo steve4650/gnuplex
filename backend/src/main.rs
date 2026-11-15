@@ -90,7 +90,7 @@ struct Args {
 
 fn main() {
     let args = parse_args();
-    init_logging(!args.prod || args.verbose);
+    init_logging(args.verbose);
     let exe = std::env::current_exe()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
@@ -122,6 +122,8 @@ fn main() {
     runtime.block_on(async_main(args, exe));
 }
 
+/// INFO logging by default; `-verbose` (passed by the dev scripts) enables
+/// DEBUG logging.
 fn init_logging(verbose: bool) {
     let level = if verbose { Level::DEBUG } else { Level::INFO };
     tracing_subscriber::fmt()

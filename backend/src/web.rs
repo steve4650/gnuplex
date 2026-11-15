@@ -1,10 +1,12 @@
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Instant;
 
 use axum::Router;
-use axum::body::{Body, Bytes};
-use axum::extract::{Path as AxumPath, RawQuery, State};
-use axum::http::{StatusCode, header};
+use axum::body::{Body, Bytes, HttpBody};
+use axum::extract::{Path as AxumPath, RawQuery, Request, State};
+use axum::http::{HeaderMap, HeaderName, StatusCode, header};
+use axum::middleware::{self, Next};
 use axum::response::Response;
 use axum::routing::{delete, get, post};
 use chrono::{DateTime, Utc};
@@ -12,7 +14,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use tokio::sync::watch;
-use tracing::info;
+use tracing::{Level, debug, enabled, info};
 
 use crate::consts;
 use crate::gnuplex::Gnuplex;
@@ -80,7 +82,58 @@ pub fn router(state: SharedState) -> Router {
         )
         .fallback(not_found)
         .method_not_allowed_fallback(not_found)
+        .layer(middleware::from_fn(log_request))
         .with_state(state)
+}
+
+/// Log every request at INFO with its method, path, query string, status and
+/// duration. At DEBUG, also include request headers and the response size.
+async fn log_request(request: Request, next: Next) -> Response {
+    let method = request.method().clone();
+    let uri = request.uri().clone();
+    let version = request.version();
+    let headers = if enabled!(Level::DEBUG) {
+        Some(request.headers().clone())
+    } else {
+        None
+    };
+    let start = Instant::now();
+    let response = next.run(request).await;
+    let elapsed = start.elapsed();
+    let status = response.status();
+
+    info!(
+        method = %method,
+        path = %uri.path(),
+        query = uri.query().unwrap_or_default(),
+        status = status.as_u16(),
+        duration = ?elapsed,
+        "request"
+    );
+
+    if let Some(headers) = headers {
+        debug!(
+            method = %method,
+            path = %uri.path(),
+            query = uri.query().unwrap_or_default(),
+            http_version = ?version,
+            user_agent = header_value(&headers, header::USER_AGENT),
+            referer = header_value(&headers, header::REFERER),
+            content_type = header_value(&headers, header::CONTENT_TYPE),
+            content_length = header_value(&headers, header::CONTENT_LENGTH),
+            response_size = response.body().size_hint().exact().unwrap_or_default(),
+            "request details"
+        );
+    }
+
+    response
+}
+
+fn header_value(headers: &HeaderMap, name: HeaderName) -> &str {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
 }
 
 fn json_response<T: Serialize + ?Sized>(status: StatusCode, value: &T) -> Response {
