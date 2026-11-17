@@ -134,8 +134,7 @@ async fn run(args: Args, exe: PathBuf) -> Result<()> {
         shutdown: shutdown_tx.clone(),
     });
     let app = router(state);
-    let bind_addr = format!("0.0.0.0:{}", args.port);
-    let listener = tokio::net::TcpListener::bind(&bind_addr)
+    let listener = tokio::net::TcpListener::bind(("0.0.0.0", args.port))
         .await
         .map_err(|err| {
             Error::Startup(format!(
