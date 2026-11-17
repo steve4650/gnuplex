@@ -111,7 +111,7 @@ pub struct VersionInfo {
 
 /*
  * Request bodies. Absent fields use the type's default rather than being
- * rejected, so older clients that omit newer fields keep working.
+ * rejected, so partial request bodies stay valid.
  */
 
 #[derive(Debug, Clone, Default, Deserialize)]
