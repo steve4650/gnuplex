@@ -13,6 +13,14 @@ use crate::error::Result;
 use crate::models::{FileExtension, MEDIA_TYPE_FILE, MEDIA_TYPE_URL, MediaDir, MediaItem};
 use crate::timestamps::{parse_db_time, to_db_time};
 
+const MEDIA_ITEM_COLUMNS: &str =
+    "id, created_at, updated_at, deleted_at, path, last_played, temp, type, last_scan_uuid";
+
+/// `SELECT` every column `read_media_item` expects from `media_items`.
+fn select_media_items(rest: &str) -> String {
+    format!("SELECT {MEDIA_ITEM_COLUMNS} FROM media_items {rest}")
+}
+
 pub struct Db {
     conn: Mutex<Connection>,
 }
@@ -174,11 +182,11 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
     /// Get the most recent 25 played MediaItems.
     pub fn get_last_25_played(&self) -> Result<Vec<MediaItem>> {
         let conn = self.connection();
-        let mut stmt = conn.prepare(
-            "SELECT id, created_at, updated_at, deleted_at, path, last_played, temp, type, last_scan_uuid \
-             FROM media_items WHERE last_played != '' AND deleted_at IS NULL \
+        let sql = select_media_items(
+            "WHERE last_played != '' AND deleted_at IS NULL \
              ORDER BY last_played desc LIMIT 25",
-        )?;
+        );
+        let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map([], read_media_item)?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
@@ -188,10 +196,9 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
         let search = search.trim();
         let conn = self.connection();
         if search.is_empty() {
-            let mut stmt = conn.prepare(
-                "SELECT id, created_at, updated_at, deleted_at, path, last_played, temp, type, last_scan_uuid \
-                 FROM media_items WHERE deleted_at IS NULL ORDER BY path LIMIT 1000 OFFSET ?",
-            )?;
+            let sql =
+                select_media_items("WHERE deleted_at IS NULL ORDER BY path LIMIT 1000 OFFSET ?");
+            let mut stmt = conn.prepare(&sql)?;
             let rows = stmt.query_map(params![offset], read_media_item)?;
             let items = rows.collect::<rusqlite::Result<Vec<_>>>()?;
             let count: i64 = conn.query_row(
@@ -203,11 +210,11 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
         }
 
         let pattern = build_search_regex(search);
-        let mut stmt = conn.prepare(
-            "SELECT id, created_at, updated_at, deleted_at, path, last_played, temp, type, last_scan_uuid \
-             FROM media_items WHERE path REGEXP ? AND deleted_at IS NULL \
+        let sql = select_media_items(
+            "WHERE path REGEXP ? AND deleted_at IS NULL \
              ORDER BY path LIMIT 1000 OFFSET ?",
-        )?;
+        );
+        let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(params![pattern, offset], read_media_item)?;
         let items = rows.collect::<rusqlite::Result<Vec<_>>>()?;
         let count: i64 = conn.query_row(
@@ -225,10 +232,9 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
         let placeholders = std::iter::repeat_n("?", paths.len())
             .collect::<Vec<_>>()
             .join(",");
-        let sql = format!(
-            "SELECT id, created_at, updated_at, deleted_at, path, last_played, temp, type, last_scan_uuid \
-             FROM media_items WHERE path IN ({placeholders}) AND deleted_at IS NULL"
-        );
+        let sql = select_media_items(&format!(
+            "WHERE path IN ({placeholders}) AND deleted_at IS NULL"
+        ));
         let conn = self.connection();
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(params_from_iter(paths.iter()), read_media_item)?;
@@ -238,27 +244,19 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
     /// Get a MediaItem by primary key.
     pub fn get_media_item_by_id(&self, id: u64) -> Result<Option<MediaItem>> {
         let conn = self.connection();
-        conn.query_row(
-            "SELECT id, created_at, updated_at, deleted_at, path, last_played, temp, type, last_scan_uuid \
-             FROM media_items WHERE id = ? AND deleted_at IS NULL ORDER BY id LIMIT 1",
-            params![id as i64],
-            read_media_item,
-        )
-        .optional()
-        .map_err(Into::into)
+        let sql = select_media_items("WHERE id = ? AND deleted_at IS NULL ORDER BY id LIMIT 1");
+        conn.query_row(&sql, params![id as i64], read_media_item)
+            .optional()
+            .map_err(Into::into)
     }
 
     /// Get a MediaItem by path.
     pub fn get_media_item_by_path(&self, path: &str) -> Result<Option<MediaItem>> {
         let conn = self.connection();
-        conn.query_row(
-            "SELECT id, created_at, updated_at, deleted_at, path, last_played, temp, type, last_scan_uuid \
-             FROM media_items WHERE path = ? AND deleted_at IS NULL ORDER BY id LIMIT 1",
-            params![path],
-            read_media_item,
-        )
-        .optional()
-        .map_err(Into::into)
+        let sql = select_media_items("WHERE path = ? AND deleted_at IS NULL ORDER BY id LIMIT 1");
+        conn.query_row(&sql, params![path], read_media_item)
+            .optional()
+            .map_err(Into::into)
     }
 
     pub fn delete_media_item_files_not_matching_uuid(&self, uuid: &str) -> Result<()> {
