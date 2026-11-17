@@ -1,8 +1,8 @@
 use chrono::{DateTime, NaiveDateTime, SecondsFormat, TimeZone, Utc};
 use serde::ser::Serializer;
 
-/// RFC 3339 with nanosecond precision and a `Z` suffix. This is the format the
-/// HTTP API has always returned.
+/// RFC 3339 with nanosecond precision and a `Z` suffix, as exposed by the HTTP
+/// API.
 pub fn rfc3339_string(dt: &DateTime<Utc>) -> String {
     let base = dt.format("%Y-%m-%dT%H:%M:%S").to_string();
     let nanos = dt.timestamp_subsec_nanos();

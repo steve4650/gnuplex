@@ -489,7 +489,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_gorm_database_boots_and_parses_timestamps() {
+    fn legacy_database_boots_and_parses_timestamps() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("legacy.db");
         {
