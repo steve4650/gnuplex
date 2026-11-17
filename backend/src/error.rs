@@ -42,4 +42,8 @@ pub enum Error {
 
     #[error("path is not valid UTF-8: {0}")]
     NonUtf8Path(std::path::PathBuf),
+
+    /// A failure that prevents the daemon from starting.
+    #[error("{0}")]
+    Startup(String),
 }

@@ -13,7 +13,7 @@ mod url;
 mod web;
 
 use std::path::PathBuf;
-use std::process::exit;
+use std::process::ExitCode;
 use std::sync::Arc;
 
 use chrono::{Local, Timelike};
@@ -22,6 +22,7 @@ use tokio::sync::watch;
 use tracing::{Level, error, info, warn};
 
 use crate::db::Db;
+use crate::error::{Error, Result};
 use crate::gnuplex::Gnuplex;
 use crate::mpv::Mpv;
 use crate::web::{AppState, router};
@@ -56,32 +57,45 @@ struct Args {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> ExitCode {
     let args = Args::parse();
     init_logging(args.verbose);
     let exe = std::env::current_exe().unwrap_or_default();
 
     if args.upgrade {
-        if let Err(err) = upgrade::upgrade_gnuplex(&exe, true) {
-            error!("7a7233a9-262a-4bf6-8229-43855d3852d2 Could not upgrade GNUPlex: {err}");
-            exit(1);
-        }
-        exit(0);
+        return match upgrade::upgrade_gnuplex(&exe, true) {
+            Ok(_) => ExitCode::SUCCESS,
+            Err(err) => {
+                error!("7a7233a9-262a-4bf6-8229-43855d3852d2 Could not upgrade GNUPlex: {err}");
+                ExitCode::FAILURE
+            }
+        };
     }
     if args.version {
-        print_version();
-        exit(0);
+        return match print_version() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(err) => {
+                error!("678f5d62-8c22-42bc-b25a-c5903b533312 failed to print version info: {err}");
+                ExitCode::FAILURE
+            }
+        };
     }
-    if std::fs::read_dir(&args.config_dir).is_err() {
+    if let Err(err) = std::fs::read_dir(&args.config_dir) {
         error!(
-            "a895ec8b-8a76-48e9-a20e-3a7d562a10ca Could not read the --config-dir directory {}",
+            "a895ec8b-8a76-48e9-a20e-3a7d562a10ca Could not read the --config-dir directory {}: {err}",
             args.config_dir.display()
         );
-        exit(1);
+        return ExitCode::FAILURE;
     }
     info!("GNUPlex Version {}", consts::VERSION);
 
-    run(args, exe).await;
+    match run(args, exe).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            error!("{err}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 /// INFO logging by default; `--verbose` (passed by the dev scripts) enables
@@ -94,27 +108,17 @@ fn init_logging(verbose: bool) {
         .init();
 }
 
-async fn run(args: Args, exe: PathBuf) {
+async fn run(args: Args, exe: PathBuf) -> Result<()> {
     let verbose = !args.prod || args.verbose;
     let screenshots_dir = screenshots::screenshots_dir(&args.static_files);
-    if let Err(err) = std::fs::create_dir_all(&screenshots_dir) {
-        error!("failed to create screenshots directory: {err}");
-        exit(1);
-    }
-    let mpv = match Mpv::init(verbose, &args.config_dir) {
-        Ok(mpv) => mpv,
-        Err(err) => {
-            error!("{err}");
-            exit(1);
-        }
-    };
-    let db = match Db::init(&args.db_path) {
-        Ok(db) => db,
-        Err(err) => {
-            error!("{err}");
-            exit(1);
-        }
-    };
+    std::fs::create_dir_all(&screenshots_dir).map_err(|err| {
+        Error::Startup(format!(
+            "failed to create screenshots directory {}: {err}",
+            screenshots_dir.display()
+        ))
+    })?;
+    let mpv = Mpv::init(verbose, &args.config_dir)?;
+    let db = Db::init(&args.db_path)?;
     let gnuplex = Arc::new(Gnuplex::new(
         db,
         Arc::clone(&mpv),
@@ -131,13 +135,13 @@ async fn run(args: Args, exe: PathBuf) {
     });
     let app = router(state);
     let bind_addr = format!("0.0.0.0:{}", args.port);
-    let listener = match tokio::net::TcpListener::bind(&bind_addr).await {
-        Ok(listener) => listener,
-        Err(err) => {
-            error!("e6c1f9ee-681d-4eb4-b487-d86622e07aac Server error: {err}");
-            exit(1);
-        }
-    };
+    let listener = tokio::net::TcpListener::bind(&bind_addr)
+        .await
+        .map_err(|err| {
+            Error::Startup(format!(
+                "e6c1f9ee-681d-4eb4-b487-d86622e07aac Server error: {err}"
+            ))
+        })?;
 
     tokio::spawn(scheduler(Arc::clone(&gnuplex), shutdown_tx.clone()));
 
@@ -148,12 +152,14 @@ async fn run(args: Args, exe: PathBuf) {
             }
         }
     };
-    if let Err(err) = axum::serve(listener, app)
+    axum::serve(listener, app)
         .with_graceful_shutdown(shutdown)
         .await
-    {
-        error!("e6c1f9ee-681d-4eb4-b487-d86622e07aac Server error: {err}");
-    }
+        .map_err(|err| {
+            Error::Startup(format!(
+                "e6c1f9ee-681d-4eb4-b487-d86622e07aac Server error: {err}"
+            ))
+        })
 }
 
 async fn scheduler(gnuplex: Arc<Gnuplex>, shutdown: watch::Sender<bool>) {
@@ -201,18 +207,13 @@ async fn scheduler(gnuplex: Arc<Gnuplex>, shutdown: watch::Sender<bool>) {
     }
 }
 
-fn print_version() {
+fn print_version() -> Result<()> {
     let info = models::VersionInfo {
         version: consts::VERSION.to_string(),
         source_hash: consts::SOURCE_HASH.to_string(),
         platform: consts::PLATFORM.to_string(),
         compiler_version: consts::COMPILER_VERSION.to_string(),
     };
-    match serde_json::to_string(&info) {
-        Ok(json) => println!("{json}"),
-        Err(_) => {
-            error!("678f5d62-8c22-42bc-b25a-c5903b533312 failed to turn version info into JSON");
-            exit(1);
-        }
-    }
+    println!("{}", serde_json::to_string(&info)?);
+    Ok(())
 }
