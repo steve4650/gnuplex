@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Mutex;
@@ -23,16 +24,25 @@ impl Db {
         conn.execute_batch(
             "PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON;",
         )?;
+        // SQLite calls this once per row. Keep the last compiled pattern
+        // around, since a query always uses the same pattern for every row.
+        let cached = RefCell::new(None);
         conn.create_scalar_function(
             "regexp",
             2,
             FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
-            |ctx| {
+            move |ctx| {
                 let pattern: String = ctx.get(0)?;
                 let subject: String = ctx.get(1)?;
-                Ok(Regex::new(&pattern)
-                    .map(|re| re.is_match(&subject))
-                    .unwrap_or(false))
+                let mut cached = cached.borrow_mut();
+                if cached.as_ref().is_none_or(|(cached, _)| *cached != pattern) {
+                    *cached = Regex::new(&pattern)
+                        .ok()
+                        .map(|regex| (pattern.clone(), regex));
+                }
+                Ok(cached
+                    .as_ref()
+                    .is_some_and(|(_, regex)| regex.is_match(&subject)))
             },
         )?;
         conn.execute_batch(
