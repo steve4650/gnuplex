@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
@@ -270,11 +271,8 @@ async fn directory_listing(dir: &Path) -> AppResult<String> {
         } else {
             escape_relative_segment(&name)
         };
-        body.push_str(&format!(
-            "<a href=\"{}\">{}</a>\n",
-            href,
-            html_escape(&display)
-        ));
+        writeln!(body, "<a href=\"{}\">{}</a>", href, html_escape(&display))
+            .expect("writing to a String cannot fail");
     }
     body.push_str("</pre>\n");
     Ok(body)
