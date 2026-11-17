@@ -4,7 +4,7 @@
 
 See README.md.
 
-The backend is written in Go, in `./backend`.
+The backend is written in Rust, in `./backend`.
 
 The frontend is written in Vite/React/Tailwind, in `./frontend`.
 
@@ -22,6 +22,6 @@ Make you're not on the git main branch, and commit progress as you work!
 
 After writing code, confirm code builds successfully by running: `uv run make.py build`.
 
-You can build just the backend by running `uv run make.py go_build`. You can build just the frontend by running `uv run make.py frontend_build`.
+You can build just the backend by running `uv run make.py build_backend`. You can build just the frontend by running `uv run make.py frontend_build`.
 
 Confirm that the code meets best practices by running: `uv run make.py lint`.
