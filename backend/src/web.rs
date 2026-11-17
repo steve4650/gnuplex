@@ -6,7 +6,7 @@ use axum::Json;
 use axum::Router;
 use axum::body::{Body, HttpBody};
 use axum::extract::{Query, Request, State};
-use axum::http::{HeaderMap, HeaderName, StatusCode, header};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
@@ -162,12 +162,15 @@ fn html_response(status: StatusCode, html: String) -> Response {
     response(status, Some("text/html; charset=utf-8"), html.into_bytes())
 }
 
-fn response(status: StatusCode, content_type: Option<&str>, body: Vec<u8>) -> Response {
-    let mut builder = Response::builder().status(status);
+fn response(status: StatusCode, content_type: Option<&'static str>, body: Vec<u8>) -> Response {
+    let mut response = Response::new(Body::from(body));
+    *response.status_mut() = status;
     if let Some(content_type) = content_type {
-        builder = builder.header(header::CONTENT_TYPE, content_type);
+        response
+            .headers_mut()
+            .insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
     }
-    builder.body(Body::from(body)).unwrap()
+    response
 }
 
 impl IntoResponse for Error {
@@ -225,12 +228,9 @@ fn redirect(location: &str) -> Response {
         html_escape(location)
     );
     let mut response = html_response(StatusCode::MOVED_PERMANENTLY, body);
-    response.headers_mut().insert(
-        header::LOCATION,
-        location
-            .parse()
-            .unwrap_or_else(|_| "/home".parse().unwrap()),
-    );
+    let location =
+        HeaderValue::from_str(location).unwrap_or_else(|_| HeaderValue::from_static("/home"));
+    response.headers_mut().insert(header::LOCATION, location);
     response
 }
 
