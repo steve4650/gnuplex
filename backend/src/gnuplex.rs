@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::db::Db;
 use crate::error::{Error, Result};
-use crate::models::{MediaItem, Screenshot, Track};
+use crate::models::{FileExtension, MediaDir, MediaItem, Screenshot, Track};
 use crate::mpv::Mpv;
 use crate::screenshots;
 use crate::subtitles;
@@ -52,11 +52,11 @@ impl<'a> ScanBatch<'a> {
 }
 
 pub struct Gnuplex {
-    pub db: Db,
-    pub mpv: Arc<Mpv>,
-    pub screenshots_dir: PathBuf,
-    pub static_files: PathBuf,
-    pub exe: PathBuf,
+    db: Db,
+    mpv: Arc<Mpv>,
+    screenshots_dir: PathBuf,
+    static_files: PathBuf,
+    exe: PathBuf,
 }
 
 impl Gnuplex {
@@ -74,6 +74,46 @@ impl Gnuplex {
             static_files,
             exe,
         }
+    }
+
+    pub fn mpv(&self) -> &Arc<Mpv> {
+        &self.mpv
+    }
+
+    pub fn screenshots_dir(&self) -> &Path {
+        &self.screenshots_dir
+    }
+
+    pub fn static_files(&self) -> &Path {
+        &self.static_files
+    }
+
+    pub fn exe(&self) -> &Path {
+        &self.exe
+    }
+
+    pub fn media_dirs(&self) -> Result<Vec<MediaDir>> {
+        self.db.get_media_dirs()
+    }
+
+    pub fn set_media_dirs(&self, media_dirs: &[String]) -> Result<()> {
+        self.db.set_media_dirs(media_dirs)
+    }
+
+    pub fn file_exts(&self) -> Result<Vec<FileExtension>> {
+        self.db.get_file_exts()
+    }
+
+    pub fn set_file_exts(&self, extensions: &[String]) -> Result<()> {
+        self.db.set_file_exts(extensions)
+    }
+
+    pub fn last_25_played(&self) -> Result<Vec<MediaItem>> {
+        self.db.get_last_25_played()
+    }
+
+    pub fn media_items(&self, search: &str, offset: i64) -> Result<(Vec<MediaItem>, i64)> {
+        self.db.get_media_items(search, offset)
     }
 
     /// Update GNUPlex's stored MediaItems using its configured MediaDirs.

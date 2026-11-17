@@ -194,7 +194,7 @@ async fn scheduler(gnuplex: Arc<Gnuplex>, shutdown: watch::Sender<bool>) {
                     continue;
                 }
             }
-            match upgrade::upgrade_gnuplex(&gnuplex.exe, false) {
+            match upgrade::upgrade_gnuplex(gnuplex.exe(), false) {
                 Ok(true) => {
                     info!("Updated GNUPlex. Quitting");
                     let _ = shutdown.send(true);
