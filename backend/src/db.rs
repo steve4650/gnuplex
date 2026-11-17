@@ -419,6 +419,48 @@ mod tests {
     }
 
     #[test]
+    fn set_media_dirs_reconciles_existing_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::init(dir.path().join("test.db")).unwrap();
+        db.set_media_dirs(&["/b".to_string(), "/a".to_string()])
+            .unwrap();
+        let paths: Vec<String> = db
+            .get_media_dirs()
+            .unwrap()
+            .into_iter()
+            .map(|media_dir| media_dir.path)
+            .collect();
+        assert_eq!(paths, ["/a", "/b"]);
+
+        db.set_media_dirs(&["/b".to_string()]).unwrap();
+        let paths: Vec<String> = db
+            .get_media_dirs()
+            .unwrap()
+            .into_iter()
+            .map(|media_dir| media_dir.path)
+            .collect();
+        assert_eq!(paths, ["/b"]);
+    }
+
+    #[test]
+    fn set_file_exts_normalizes_and_replaces() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::init(dir.path().join("test.db")).unwrap();
+        db.set_file_exts(&["MKV".to_string(), "mp4".to_string(), "mkv".to_string()])
+            .unwrap();
+        let extensions: Vec<String> = db
+            .get_file_exts()
+            .unwrap()
+            .into_iter()
+            .map(|extension| extension.extension)
+            .collect();
+        assert_eq!(extensions, ["mkv", "mp4"]);
+
+        db.set_file_exts(&[]).unwrap();
+        assert!(db.get_file_exts().unwrap().is_empty());
+    }
+
+    #[test]
     fn add_and_delete_files() {
         let dir = tempfile::tempdir().unwrap();
         let db = Db::init(dir.path().join("test.db")).unwrap();
