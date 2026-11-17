@@ -6,10 +6,10 @@ use crate::error::{Error, Result};
 /// Upgrade GNUPlex from the git checkout containing the executable.
 /// The boolean result says whether an upgrade actually happened.
 pub fn upgrade_gnuplex(exe: &Path, interactive: bool) -> Result<bool> {
-    let cwd = exe
-        .parent()
-        .map(|parent| parent.join("../.."))
-        .unwrap_or_else(|| Path::new("../..").to_path_buf());
+    let cwd = exe.parent().map_or_else(
+        || Path::new("../..").to_path_buf(),
+        |parent| parent.join("../.."),
+    );
 
     let branch = git_output(&cwd, &["branch", "--show-current"])
         .map_err(|err| Error::Git(format!("19c5e798-666b-4aae-818b-56061645ca9f {err}")))?;
@@ -42,7 +42,7 @@ fn git_command(cwd: &Path, args: &[&str]) -> Command {
 
 fn git_output(cwd: &Path, args: &[&str]) -> Result<Vec<u8>> {
     let output = git_command(cwd, args).output()?;
-    ensure_success(args, &output.status, &output.stderr)?;
+    ensure_success(args, output.status, &output.stderr)?;
     Ok(output.stdout)
 }
 
@@ -51,10 +51,10 @@ fn git_inherit(cwd: &Path, args: &[&str]) -> Result<()> {
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .status()?;
-    ensure_success(args, &status, "")
+    ensure_success(args, status, "")
 }
 
-fn ensure_success(args: &[&str], status: &ExitStatus, stderr: impl AsRef<[u8]>) -> Result<()> {
+fn ensure_success(args: &[&str], status: ExitStatus, stderr: impl AsRef<[u8]>) -> Result<()> {
     if status.success() {
         return Ok(());
     }

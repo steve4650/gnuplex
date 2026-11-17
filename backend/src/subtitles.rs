@@ -15,7 +15,7 @@ pub fn shift_subtitle_file(path: &Path, delta_seconds: f64) -> Result<()> {
     {
         Some("srt") => Format::Srt,
         Some("vtt") => Format::Vtt,
-        Some("ass") | Some("ssa") => Format::Ass,
+        Some("ass" | "ssa") => Format::Ass,
         _ => {
             return Err(Error::Subtitle(format!(
                 "unsupported subtitle format: {}",

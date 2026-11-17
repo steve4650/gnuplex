@@ -243,9 +243,12 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
 
     /// Get a MediaItem by primary key.
     pub fn get_media_item_by_id(&self, id: u64) -> Result<Option<MediaItem>> {
+        let id = i64::try_from(id).map_err(|_| {
+            crate::error::Error::BadRequest(format!("media item id {id} is too large"))
+        })?;
         let conn = self.connection();
         let sql = select_media_items("WHERE id = ? AND deleted_at IS NULL ORDER BY id LIMIT 1");
-        conn.query_row(&sql, params![id as i64], read_media_item)
+        conn.query_row(&sql, params![id], read_media_item)
             .optional()
             .map_err(Into::into)
     }

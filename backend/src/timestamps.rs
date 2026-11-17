@@ -21,17 +21,18 @@ pub fn to_db_time(dt: &DateTime<Utc>) -> String {
     dt.to_rfc3339_opts(SecondsFormat::AutoSi, false)
 }
 
-/// Parse timestamps written by this backend or by the old Go backend.
+/// Parse timestamps written by this backend or by a legacy database.
 pub fn parse_db_time(s: &str) -> Option<DateTime<Utc>> {
-    if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
-        return Some(dt.with_timezone(&Utc));
-    }
-    // Legacy rows use a space separator and may omit the offset.
+    // Rows written by older versions use a space separator and may omit the
+    // offset. Accepting them is what lets an existing database boot.
     const LEGACY_FORMATS: &[&str] = &[
         "%Y-%m-%d %H:%M:%S%.f%:z",
         "%Y-%m-%d %H:%M:%S%.f%#z",
         "%Y-%m-%d %H:%M:%S%.f",
     ];
+    if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+        return Some(dt.with_timezone(&Utc));
+    }
     for format in LEGACY_FORMATS {
         if let Ok(dt) = DateTime::parse_from_str(s, format) {
             return Some(dt.with_timezone(&Utc));
