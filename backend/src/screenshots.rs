@@ -38,7 +38,7 @@ pub fn take_screenshot(
     let path = screenshots_dir.join(&name);
     let path = path
         .to_str()
-        .ok_or_else(|| Error::NonUtf8Path(path.to_path_buf()))?;
+        .ok_or_else(|| Error::NonUtf8Path(path.clone()))?;
     mpv.screenshot_to_file(path)?;
     let metadata = std::fs::metadata(path)?;
     Ok(Screenshot {
@@ -72,8 +72,10 @@ pub fn list_recent_screenshots(screenshots_dir: &Path, limit: i64) -> Result<Vec
             .cmp(&a.modified_at)
             .then_with(|| a.name.cmp(&b.name))
     });
-    if limit > 0 && screenshots.len() > limit as usize {
-        screenshots.truncate(limit as usize);
+    if let Ok(limit) = usize::try_from(limit)
+        && screenshots.len() > limit
+    {
+        screenshots.truncate(limit);
     }
     Ok(screenshots)
 }

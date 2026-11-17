@@ -249,14 +249,17 @@ async fn directory_listing(dir: &Path) -> AppResult<String> {
     while let Some(entry) = read_dir.next_entry().await? {
         entries.push(entry);
     }
-    entries.sort_by_key(|entry| entry.file_name());
+    entries.sort_by_key(tokio::fs::DirEntry::file_name);
 
     let mut body = String::from(
         "<!doctype html>\n<meta name=\"viewport\" content=\"width=device-width\">\n<pre>\n",
     );
     for entry in entries {
         let name = entry.file_name().to_string_lossy().to_string();
-        let is_dir = entry.file_type().await.map(|t| t.is_dir()).unwrap_or(false);
+        let is_dir = entry
+            .file_type()
+            .await
+            .is_ok_and(|file_type| file_type.is_dir());
         let display = if is_dir {
             format!("{name}/")
         } else {

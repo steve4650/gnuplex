@@ -7,7 +7,7 @@ pub const MEDIA_TYPE_FILE: i64 = 1;
 pub const MEDIA_TYPE_URL: i64 = 2;
 
 fn queue_id_absent(value: &Option<i64>) -> bool {
-    value.is_none_or(|id| id == 0)
+    matches!(value, None | Some(0))
 }
 
 #[derive(Debug, Clone, Serialize)]
