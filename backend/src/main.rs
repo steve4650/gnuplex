@@ -6,6 +6,7 @@ mod models;
 mod mpv;
 mod screenshots;
 mod subtitles;
+mod sync;
 mod timestamps;
 mod upgrade;
 mod url;

@@ -74,7 +74,7 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
     }
 
     fn connection(&self) -> std::sync::MutexGuard<'_, Connection> {
-        self.conn.lock().unwrap_or_else(|e| e.into_inner())
+        crate::sync::lock(&self.conn)
     }
 
     /// Update a MediaItem's LastPlayed attribute to be the current time.
