@@ -1,5 +1,4 @@
-// Build metadata. The names are kept for API compatibility with existing
-// clients.
+// Build metadata.
 //
 // These are compile-time constants baked into the binary by build.rs. The
 // environment is only read while compiling; it cannot override them at

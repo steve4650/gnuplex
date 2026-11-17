@@ -106,7 +106,7 @@ pub struct VersionInfo {
     pub version: String,
     pub source_hash: String,
     pub platform: String,
-    pub go_version: String,
+    pub compiler_version: String,
 }
 
 /*
