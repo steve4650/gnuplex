@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 use crate::error::{Error, Result};
 use crate::models::{PlaylistEntry, Track};
+use crate::sync::lock;
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
@@ -49,7 +50,7 @@ impl Mpv {
 
     fn restart_process(&self) -> Result<()> {
         {
-            let mut count = self.restart_count.lock().unwrap_or_else(|e| e.into_inner());
+            let mut count = lock(&self.restart_count);
             if *count >= 10 {
                 return Err(Error::Mpv(
                     "4b367530-abab-4964-a093-72f78cf523f2 reached limit of MPV restarts (10)"
@@ -59,7 +60,7 @@ impl Mpv {
             *count += 1;
         }
         {
-            let mut process = self.process.lock().unwrap_or_else(|e| e.into_inner());
+            let mut process = lock(&self.process);
             if let Some(child) = process.as_mut()
                 && child.try_wait().ok().flatten().is_none()
             {
@@ -68,7 +69,7 @@ impl Mpv {
             }
         }
         // Drop the old connection; mpv's IPC socket disappears with it.
-        *self.conn.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        *lock(&self.conn) = None;
 
         let socket_path = PathBuf::from(format!("/tmp/mpvsocket-{}", Uuid::new_v4()));
         let mut command = Command::new("mpv");
@@ -87,7 +88,7 @@ impl Mpv {
                 "1b2b2f70-d75c-4ee4-b977-95f7272f72e9: mpvdaemon.Run: {e}"
             ))
         })?;
-        *self.process.lock().unwrap_or_else(|e| e.into_inner()) = Some(child);
+        *lock(&self.process) = Some(child);
 
         let mut attempt = 0;
         loop {
@@ -96,8 +97,7 @@ impl Mpv {
                 Ok(stream) => {
                     let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
                     let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
-                    *self.conn.lock().unwrap_or_else(|e| e.into_inner()) =
-                        Some(BufReader::new(stream));
+                    *lock(&self.conn) = Some(BufReader::new(stream));
                     info!("Established unix socket connection to mpv.");
                     return Ok(());
                 }
@@ -147,7 +147,7 @@ impl Mpv {
             "request_id": request_id,
         }))?;
 
-        let mut guard = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        let mut guard = lock(&self.conn);
         let conn = guard.as_mut().ok_or_else(|| {
             Error::Mpv("5f0b1f1a-4f6c-4a53-a8a3-2e8f0c9a1f43: mpv is not connected".to_string())
         })?;
