@@ -46,11 +46,11 @@ struct ScreenshotsQuery {
 }
 
 pub fn router(state: SharedState) -> Router {
-    let home = Router::<SharedState>::new()
-        .fallback_service(ServeDir::new(state.gnuplex.static_files.clone()));
+    let home =
+        Router::<SharedState>::new().fallback_service(ServeDir::new(state.gnuplex.static_files()));
     let screenshots = Router::<SharedState>::new()
         .route("/", get(screenshots_index))
-        .fallback_service(ServeDir::new(state.gnuplex.screenshots_dir.clone()));
+        .fallback_service(ServeDir::new(state.gnuplex.screenshots_dir()));
 
     Router::new()
         .route("/", get(root_redirect))
@@ -214,7 +214,7 @@ where
     F: FnOnce(&crate::mpv::Mpv) -> AppResult<T> + Send + 'static,
     T: Send + 'static,
 {
-    let mpv = Arc::clone(&state.gnuplex.mpv);
+    let mpv = Arc::clone(state.gnuplex.mpv());
     run_blocking(move || work(&mpv)).await
 }
 
@@ -239,7 +239,7 @@ async fn root_redirect() -> Response {
 }
 
 async fn screenshots_index(State(state): State<SharedState>) -> AppResult<Response> {
-    let body = directory_listing(&state.gnuplex.screenshots_dir).await?;
+    let body = directory_listing(state.gnuplex.screenshots_dir()).await?;
     Ok(html_response(StatusCode::OK, body))
 }
 
@@ -369,7 +369,7 @@ async fn api_set_vol(
 }
 
 async fn api_get_media_dirs(State(state): State<SharedState>) -> AppResult<Json<Vec<MediaDir>>> {
-    let dirs = with_gnuplex(&state, |gnuplex| gnuplex.db.get_media_dirs()).await?;
+    let dirs = with_gnuplex(&state, |gnuplex| gnuplex.media_dirs()).await?;
     Ok(Json(dirs))
 }
 
@@ -377,14 +377,14 @@ async fn api_set_media_dirs(
     State(state): State<SharedState>,
     Json(body): Json<Vec<String>>,
 ) -> AppResult<StatusCode> {
-    with_gnuplex(&state, move |gnuplex| gnuplex.db.set_media_dirs(&body)).await?;
+    with_gnuplex(&state, move |gnuplex| gnuplex.set_media_dirs(&body)).await?;
     Ok(StatusCode::OK)
 }
 
 async fn api_get_file_exts(
     State(state): State<SharedState>,
 ) -> AppResult<Json<Vec<FileExtension>>> {
-    let extensions = with_gnuplex(&state, |gnuplex| gnuplex.db.get_file_exts()).await?;
+    let extensions = with_gnuplex(&state, |gnuplex| gnuplex.file_exts()).await?;
     Ok(Json(extensions))
 }
 
@@ -392,7 +392,7 @@ async fn api_set_file_exts(
     State(state): State<SharedState>,
     Json(body): Json<Vec<String>>,
 ) -> AppResult<StatusCode> {
-    with_gnuplex(&state, move |gnuplex| gnuplex.db.set_file_exts(&body)).await?;
+    with_gnuplex(&state, move |gnuplex| gnuplex.set_file_exts(&body)).await?;
     Ok(StatusCode::OK)
 }
 
@@ -415,7 +415,7 @@ async fn api_set_pos(
 }
 
 async fn api_last_25(State(state): State<SharedState>) -> AppResult<Json<Vec<MediaItem>>> {
-    let items = with_gnuplex(&state, |gnuplex| gnuplex.db.get_last_25_played()).await?;
+    let items = with_gnuplex(&state, |gnuplex| gnuplex.last_25_played()).await?;
     Ok(Json(items))
 }
 
@@ -424,7 +424,7 @@ async fn api_media_items(
     Query(query): Query<MediaItemsQuery>,
 ) -> AppResult<Json<MediaItemsRes>> {
     let (items, count) = with_gnuplex(&state, move |gnuplex| {
-        gnuplex.db.get_media_items(&query.search, query.offset)
+        gnuplex.media_items(&query.search, query.offset)
     })
     .await?;
     Ok(Json(MediaItemsRes { res: items, count }))
@@ -483,7 +483,7 @@ async fn api_sub_save(State(state): State<SharedState>) -> AppResult<StatusCode>
 }
 
 async fn api_upgrade(State(state): State<SharedState>) -> AppResult<StatusCode> {
-    let exe = state.gnuplex.exe.clone();
+    let exe = state.gnuplex.exe().to_path_buf();
     if run_blocking(move || upgrade_gnuplex(&exe, false)).await? {
         info!("Upgraded and going into shutdown");
         let _ = state.shutdown.send(true);
