@@ -297,7 +297,7 @@ async fn api_version() -> Json<VersionInfo> {
         version: consts::VERSION.to_string(),
         source_hash: consts::SOURCE_HASH.to_string(),
         platform: consts::PLATFORM.to_string(),
-        go_version: consts::COMPILER_VERSION.to_string(),
+        compiler_version: consts::COMPILER_VERSION.to_string(),
     })
 }
 
