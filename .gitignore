@@ -1,13 +1,13 @@
 backend/bin/gnuplex
 backend/__debug_bin*
 backend/gnuplex-backend
-backend/gnuplex.sqlite3
+backend/gnuplex.sqlite
 backend/public/*
 backend/static/*
 backend/bin/gnuplex
 backend/target
 .bundle
-gnuplex.sqlite3
+gnuplex.sqlite3*
 node_modules
 .project.vim
 .ruby-lsp
