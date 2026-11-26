@@ -108,7 +108,8 @@ CREATE INDEX IF NOT EXISTS `idx_file_extensions_deleted_at` ON `file_extensions`
     pub fn set_file_exts(&self, extensions: &[String]) -> Result<()> {
         let mut extensions: Vec<String> = extensions
             .iter()
-            .map(|extension| extension.to_lowercase())
+            .map(|extension| extension.trim_start_matches('.').to_lowercase())
+            .filter(|extension| !extension.is_empty())
             .collect();
         extensions.sort_unstable();
         extensions.dedup();
@@ -449,7 +450,7 @@ mod tests {
     fn set_file_exts_normalizes_and_replaces() {
         let dir = tempfile::tempdir().unwrap();
         let db = Db::init(dir.path().join("test.db")).unwrap();
-        db.set_file_exts(&["MKV".to_string(), "mp4".to_string(), "mkv".to_string()])
+        db.set_file_exts(&["MKV".to_string(), ".mp4".to_string(), "mkv".to_string()])
             .unwrap();
         let extensions: Vec<String> = db
             .get_file_exts()

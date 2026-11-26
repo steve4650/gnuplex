@@ -183,6 +183,7 @@ async fn scheduler(gnuplex: Arc<Gnuplex>, shutdown: watch::Sender<bool>) {
                         warn!(
                             "a3b99261-331c-4484-a9fb-358b66f364f2 Not updating; something is playing"
                         );
+                        continue;
                     }
                 }
                 Ok(None) => {}

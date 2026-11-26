@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::db::Db;
 use crate::error::{Error, Result};
-use crate::models::{FileExtension, MediaDir, MediaItem, Screenshot, Track};
+use crate::models::{FileExtension, MEDIA_TYPE_URL, MediaDir, MediaItem, Screenshot, Track};
 use crate::mpv::Mpv;
 use crate::screenshots;
 use crate::subtitles;
@@ -123,7 +123,7 @@ impl Gnuplex {
             .db
             .get_file_exts()?
             .into_iter()
-            .map(|extension| extension.extension)
+            .map(|extension| extension.extension.trim_start_matches('.').to_string())
             .collect();
 
         let scan_id = Uuid::new_v4().to_string();
@@ -156,7 +156,7 @@ impl Gnuplex {
             .iter()
             .map(|entry| entry.filename.clone())
             .collect();
-        let mut by_path: HashMap<String, MediaItem> = self
+        let by_path: HashMap<String, MediaItem> = self
             .db
             .get_media_items_by_paths(&paths)?
             .into_iter()
@@ -165,10 +165,25 @@ impl Gnuplex {
 
         let ordered: Vec<MediaItem> = playlist
             .into_iter()
-            .filter_map(|entry| {
-                let mut item = by_path.remove(&entry.filename)?;
-                item.queue_id = Some(entry.id);
-                Some(item)
+            .map(|entry| {
+                if let Some(item) = by_path.get(&entry.filename) {
+                    let mut item = item.clone();
+                    item.queue_id = Some(entry.id);
+                    item
+                } else {
+                    MediaItem {
+                        id: 0,
+                        created_at: Utc::now(),
+                        updated_at: Utc::now(),
+                        deleted_at: None,
+                        path: entry.filename.clone(),
+                        last_played: String::new(),
+                        temp: true,
+                        media_type: MEDIA_TYPE_URL,
+                        last_scan_uuid: String::new(),
+                        queue_id: Some(entry.id),
+                    }
+                }
             })
             .collect();
         if ordered.is_empty() {
@@ -211,7 +226,16 @@ impl Gnuplex {
 
     /// Cast a URL to the media player. `temp` controls whether or not it is
     /// added to the library.
-    pub fn cast(&self, url: &str, temp_url: bool, play_next: bool, play_last: bool) -> Result<()> {
+    pub fn cast(
+        &self,
+        url: &str,
+        temp_url: bool,
+        mut play_next: bool,
+        play_last: bool,
+    ) -> Result<()> {
+        if !play_next && !play_last {
+            play_next = true;
+        }
         if temp_url {
             self.play_by_path(url, true, play_next, play_last)
         } else {
@@ -300,9 +324,8 @@ fn walk_dir(
 
     for entry in entries {
         let path = entry.path();
-        // Directory symlinks are intentionally not followed.
-        let is_dir = match entry.file_type() {
-            Ok(file_type) => file_type.is_dir(),
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
             Err(err) => {
                 warn!(
                     "Error 62b2b0e2-25d7-49db-a31a-5785c145229f: could not read the file type for {}: {err}",
@@ -311,9 +334,19 @@ fn walk_dir(
                 continue;
             }
         };
-        if is_dir {
+        if file_type.is_dir() {
             walk_dir(&path, file_extensions, batch)?;
             continue;
+        }
+        if file_type.is_symlink() {
+            match std::fs::metadata(&path) {
+                Ok(metadata) if metadata.is_dir() => {
+                    // Directory symlinks are intentionally not followed.
+                    continue;
+                }
+                Ok(metadata) if metadata.is_file() => {}
+                _ => continue,
+            }
         }
         let extension = path
             .extension()

@@ -29,12 +29,12 @@ pub fn shift_subtitle_file(path: &Path, delta_seconds: f64) -> Result<()> {
         subcue::parse(&bytes, format).map_err(|err| Error::Subtitle(err.to_string()))?;
     let delta_ms = (delta_seconds * 1000.0).trunc() as i64;
     for cue in &mut subtitles.cues {
-        cue.start.0 = cue.start.0.saturating_add(delta_ms);
-        cue.end.0 = cue.end.0.saturating_add(delta_ms);
+        cue.start.0 = cue.start.0.saturating_add(delta_ms).max(0);
+        cue.end.0 = cue.end.0.saturating_add(delta_ms).max(0);
     }
     for event in &mut subtitles.events {
-        event.start.0 = event.start.0.saturating_add(delta_ms);
-        event.end.0 = event.end.0.saturating_add(delta_ms);
+        event.start.0 = event.start.0.saturating_add(delta_ms).max(0);
+        event.end.0 = event.end.0.saturating_add(delta_ms).max(0);
     }
     let mut output = subtitles.compose_with(&ComposeOptions {
         line_ending: LineEnding::Lf,
@@ -70,6 +70,21 @@ mod tests {
         assert_eq!(
             out,
             b"\xef\xbb\xbf1\n00:00:17,500 --> 00:00:22,500\nHello\n\n2\n00:00:27,500 --> 00:00:32,500\nWorld\n"
+        );
+    }
+
+    #[test]
+    fn shifts_srt_clamps_at_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("clamp.srt");
+        let mut file = std::fs::File::create(&path).unwrap();
+        write!(file, "1\n00:00:02,000 --> 00:00:05,000\nHello\n").unwrap();
+        drop(file);
+        shift_subtitle_file(&path, -5.0).unwrap();
+        let out = std::fs::read(&path).unwrap();
+        assert_eq!(
+            out,
+            b"\xef\xbb\xbf1\n00:00:00,000 --> 00:00:00,000\nHello\n"
         );
     }
 }

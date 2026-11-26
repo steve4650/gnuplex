@@ -143,12 +143,28 @@ pub struct PosBody {
     pub pos: i64,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+fn default_sub_id() -> i64 {
+    -1
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct SubBody {
+    #[serde(default)]
     pub visible: bool,
+    #[serde(default = "default_sub_id")]
     pub id: i64,
+    #[serde(default)]
     pub delay: f64,
+}
+
+impl Default for SubBody {
+    fn default() -> Self {
+        Self {
+            visible: false,
+            id: -1,
+            delay: 0.0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -180,5 +196,9 @@ mod tests {
         assert_eq!(track.track_type, "sub");
         assert_eq!(track.title, "");
         assert!(!track.external);
+
+        let sub_body: SubBody = serde_json::from_str(r#"{"visible":false}"#).unwrap();
+        assert!(!sub_body.visible);
+        assert_eq!(sub_body.id, -1);
     }
 }

@@ -47,8 +47,9 @@ struct ScreenshotsQuery {
 }
 
 pub fn router(state: SharedState) -> Router {
-    let home =
-        Router::<SharedState>::new().fallback_service(ServeDir::new(state.gnuplex.static_files()));
+    let home = Router::<SharedState>::new().fallback_service(
+        ServeDir::new(state.gnuplex.static_files()).append_index_html_on_directories(true),
+    );
     let screenshots = Router::<SharedState>::new()
         .route("/", get(screenshots_index))
         .fallback_service(ServeDir::new(state.gnuplex.screenshots_dir()));
@@ -540,7 +541,9 @@ mod tests {
             .route("/gnuplex", get(root_redirect))
             .nest(
                 "/home",
-                Router::new().fallback_service(ServeDir::new("static")),
+                Router::new().fallback_service(
+                    ServeDir::new("static").append_index_html_on_directories(true),
+                ),
             )
             .nest(
                 "/screenshots",
