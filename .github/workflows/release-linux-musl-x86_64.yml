@@ -1,11 +1,11 @@
 name: Update release-linux-musl-x86_64 on version change
 
-on:
-  push:
-    branches:
-      - main
-    paths:
-      - "backend/consts/version.go"
+#on:
+#  push:
+#    branches:
+#      - main
+#    paths:
+#      - "backend/consts/version.go"
 
 jobs:
   update-release-linux-musl-x86_64:
