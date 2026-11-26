@@ -53,7 +53,7 @@ impl Mpv {
             let mut count = lock(&self.restart_count);
             if *count >= 10 {
                 return Err(Error::Mpv(
-                    "4b367530-abab-4964-a093-72f78cf523f2 reached limit of MPV restarts (10)"
+                    "4b367530-abab-4964-a093-72f78cf523f2: reached limit of MPV restarts (10)"
                         .to_string(),
                 ));
             }
@@ -109,7 +109,7 @@ impl Mpv {
                         )));
                     }
                     warn!(
-                        "Warning 6b94b8d9-9992-4276-8f6f-4d1b339cb59a: could not init unix socket to mpv, trying again in 2 seconds. {err}"
+                        "6b94b8d9-9992-4276-8f6f-4d1b339cb59a: could not init unix socket to mpv, trying again in 2 seconds. {err}"
                     );
                     std::thread::sleep(Duration::from_secs(2));
                 }
@@ -125,11 +125,11 @@ impl Mpv {
             loop {
                 if mpv.ping().is_err() {
                     error!(
-                        "Error b304c2bb-a940-4a3e-979d-2939e986ed87: failed to ping MPV. restarting MPV."
+                        "b304c2bb-a940-4a3e-979d-2939e986ed87: failed to ping MPV. restarting MPV."
                     );
                     if let Err(err) = mpv.restart_process() {
                         error!(
-                            "Error c7b92229-b6b8-4800-91d6-8b8afb733d9c: failed to restart MPV. stopping gnuplex: {err}"
+                            "c7b92229-b6b8-4800-91d6-8b8afb733d9c: failed to restart MPV. stopping gnuplex: {err}"
                         );
                         let _ = shutdown.send(true);
                         return;

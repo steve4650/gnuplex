@@ -12,7 +12,7 @@ pub fn upgrade_gnuplex(exe: &Path, interactive: bool) -> Result<bool> {
     );
 
     let branch = git_output(&cwd, &["branch", "--show-current"])
-        .map_err(|err| Error::Git(format!("19c5e798-666b-4aae-818b-56061645ca9f {err}")))?;
+        .map_err(|err| Error::Git(format!("19c5e798-666b-4aae-818b-56061645ca9f: {err}")))?;
     let branch = String::from_utf8_lossy(&branch).trim().to_string();
 
     git_output(&cwd, &["fetch", "origin", &branch])?;

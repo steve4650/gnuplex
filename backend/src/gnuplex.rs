@@ -133,9 +133,12 @@ impl Gnuplex {
                 Ok(metadata) if metadata.is_dir() => {
                     walk_dir(Path::new(&media_dir.path), &file_extensions, &mut batch)?;
                 }
-                Ok(_) => warn!("skipping {} - not a directory", media_dir.path),
+                Ok(_) => warn!(
+                    "83e18a91-4cf1-4541-b6a4-c289ad699e19: skipping {} - not a directory",
+                    media_dir.path
+                ),
                 Err(err) => warn!(
-                    "skipping {} - could not stat this directory: {err}",
+                    "d3c63942-5dbb-4aa1-be1e-36cb9ebaa6e7: skipping {} - could not stat this directory: {err}",
                     media_dir.path
                 ),
             }
@@ -301,7 +304,7 @@ fn walk_dir(
         Ok(read_dir) => read_dir,
         Err(err) => {
             warn!(
-                "Error 62b2b0e2-25d7-49db-a31a-5785c145229f: file read issue for {}: {err}",
+                "62b2b0e2-25d7-49db-a31a-5785c145229f: file read issue for {}: {err}",
                 dir.display()
             );
             return Ok(());
@@ -313,7 +316,7 @@ fn walk_dir(
             Ok(entry) => Some(entry),
             Err(err) => {
                 warn!(
-                    "Error 62b2b0e2-25d7-49db-a31a-5785c145229f: could not read an entry in {}: {err}",
+                    "3761c289-04c0-4b8a-a971-00d178220782: could not read an entry in {}: {err}",
                     dir.display()
                 );
                 None
@@ -328,7 +331,7 @@ fn walk_dir(
             Ok(file_type) => file_type,
             Err(err) => {
                 warn!(
-                    "Error 62b2b0e2-25d7-49db-a31a-5785c145229f: could not read the file type for {}: {err}",
+                    "f0c55dc2-a231-42c2-9daa-024482799323: could not read the file type for {}: {err}",
                     path.display()
                 );
                 continue;

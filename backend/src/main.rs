@@ -66,7 +66,7 @@ async fn main() -> ExitCode {
         return match upgrade::upgrade_gnuplex(&exe, true) {
             Ok(_) => ExitCode::SUCCESS,
             Err(err) => {
-                error!("7a7233a9-262a-4bf6-8229-43855d3852d2 Could not upgrade GNUPlex: {err}");
+                error!("7a7233a9-262a-4bf6-8229-43855d3852d2: could not upgrade GNUPlex: {err}");
                 ExitCode::FAILURE
             }
         };
@@ -75,14 +75,14 @@ async fn main() -> ExitCode {
         return match print_version() {
             Ok(()) => ExitCode::SUCCESS,
             Err(err) => {
-                error!("678f5d62-8c22-42bc-b25a-c5903b533312 failed to print version info: {err}");
+                error!("678f5d62-8c22-42bc-b25a-c5903b533312: failed to print version info: {err}");
                 ExitCode::FAILURE
             }
         };
     }
     if let Err(err) = std::fs::read_dir(&args.config_dir) {
         error!(
-            "a895ec8b-8a76-48e9-a20e-3a7d562a10ca Could not read the --config-dir directory {}: {err}",
+            "a895ec8b-8a76-48e9-a20e-3a7d562a10ca: could not read the --config-dir directory {}: {err}",
             args.config_dir.display()
         );
         return ExitCode::FAILURE;
@@ -138,7 +138,7 @@ async fn run(args: Args, exe: PathBuf) -> Result<()> {
         .await
         .map_err(|err| {
             Error::Startup(format!(
-                "e6c1f9ee-681d-4eb4-b487-d86622e07aac Server error: {err}"
+                "e6c1f9ee-681d-4eb4-b487-d86622e07aac: could not bind listener: {err}"
             ))
         })?;
 
@@ -156,7 +156,7 @@ async fn run(args: Args, exe: PathBuf) -> Result<()> {
         .await
         .map_err(|err| {
             Error::Startup(format!(
-                "e6c1f9ee-681d-4eb4-b487-d86622e07aac Server error: {err}"
+                "38263abe-be5f-4d13-bddf-f4e16ba06d87: server error: {err}"
             ))
         })
 }
@@ -171,7 +171,7 @@ async fn scheduler(gnuplex: Arc<Gnuplex>, shutdown: watch::Sender<bool>) {
             last_scan = Some(date);
             info!("running ScanLib job");
             if let Err(err) = gnuplex.scan_lib() {
-                error!("scanlib job failed: {err}");
+                error!("0700be03-adde-4f6a-8b8b-40361d1c5655: scanlib job failed: {err}");
             }
         }
         if now.hour() == 2 && now.minute() == 15 && last_update != Some(date) {
@@ -181,7 +181,7 @@ async fn scheduler(gnuplex: Arc<Gnuplex>, shutdown: watch::Sender<bool>) {
                 Ok(Some(paths)) => {
                     if !paths.is_empty() {
                         warn!(
-                            "a3b99261-331c-4484-a9fb-358b66f364f2 Not updating; something is playing"
+                            "a3b99261-331c-4484-a9fb-358b66f364f2: not updating; something is playing"
                         );
                         continue;
                     }
@@ -189,7 +189,7 @@ async fn scheduler(gnuplex: Arc<Gnuplex>, shutdown: watch::Sender<bool>) {
                 Ok(None) => {}
                 Err(err) => {
                     error!(
-                        "857034c0-a7db-4aa8-8cdf-00d0b6d811c2 Failed to retrieve NowPlaying: {err}"
+                        "857034c0-a7db-4aa8-8cdf-00d0b6d811c2: failed to retrieve NowPlaying: {err}"
                     );
                     continue;
                 }
@@ -200,7 +200,7 @@ async fn scheduler(gnuplex: Arc<Gnuplex>, shutdown: watch::Sender<bool>) {
                     let _ = shutdown.send(true);
                 }
                 Ok(false) => {}
-                Err(err) => error!("upgrade job failed: {err}"),
+                Err(err) => error!("c4cde0b8-1fd5-4ab0-a081-c59b4944e6af: upgrade job failed: {err}"),
             }
         }
         tokio::time::sleep(std::time::Duration::from_secs(20)).await;

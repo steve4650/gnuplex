@@ -183,7 +183,7 @@ impl IntoResponse for Error {
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
         if status == StatusCode::INTERNAL_SERVER_ERROR {
-            error!(error = %self, "request failed");
+            error!(error = %self, "7b41dc45-5d59-42b0-9e9e-8ae89549669b: request failed");
             return text_response(status, "some problem doing that");
         }
         text_response(status, &self.to_string())
