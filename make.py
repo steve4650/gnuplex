@@ -20,7 +20,7 @@ install(show_locals=True)
 def build():
     """Build the frontend and the backend"""
     build_frontend()
-    build_go()
+    build_backend()
 
 
 def build_frontend():
@@ -29,21 +29,22 @@ def build_frontend():
     run("bun run --cwd frontend build")
 
 
-def build_go():
-    """Build the Go backend"""
-    target = os.environ.get("TARGET", "bin/gnuplex")
-    run(f'go build -C backend -o {target} -ldflags "-X main.SourceHash={_source_hash()} ' + f"-X main.Platform={platform()} " + f"-X main.GoVersion={go_version()} " + '" .')
+def build_backend(target="backend/bin/gnuplex"):
+    """Build the Rust backend"""
+    run("cargo build --release --manifest-path backend/Cargo.toml", env=build_env())
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    run(f"cp backend/target/release/gnuplex {target}")
 
 
-def build_go_ci():
-    """Build the Go backend (used by CI)"""
-    run("go build -C backend -o /tmp/gnuplex" + f' -ldflags "-X main.SourceHash={_source_hash()}' + f' -X main.Platform={platform()}" .')
+def build_ci():
+    """Build the Rust backend (used by CI)"""
+    build_backend("/tmp/gnuplex")
 
 
 def bump_version():
     """Bump the version of this repo"""
     ver = str(int(time.time()))
-    run('sed -E -i -e "s/Version = \\"[0-9]+\\"/Version = \\"' + ver + '\\"/" backend/consts/version.go')
+    run('sed -E -i -e "s/(pub const VERSION: &str = \\")[0-9]+(\\";)/\\1' + ver + '\\2/" backend/src/consts.rs')
 
 
 def dev():
@@ -55,7 +56,10 @@ def dev():
     procs = [
         subprocess.Popen("caddy run", shell=True),
         subprocess.Popen("bun run --cwd frontend dev", shell=True),
-        subprocess.Popen("go run -C backend . -verbose -static_files ../tmp", shell=True),
+        subprocess.Popen(
+            "cargo run --manifest-path backend/Cargo.toml -- --verbose --static-files ./tmp --config-dir ./backend/mpv_config",
+            shell=True,
+        ),
     ]
 
     def cleanup(signum, frame):
@@ -78,7 +82,10 @@ def dev_compiled():
     os.makedirs("tmp", exist_ok=True)
     procs = [
         subprocess.Popen("caddy run --config Caddyfile-compiled", shell=True),
-        subprocess.Popen("./backend/bin/gnuplex -verbose -static_files ./backend/static -config_dir ./backend/mpv_config", shell=True),
+        subprocess.Popen(
+            "./backend/bin/gnuplex --verbose --static-files ./backend/static --config-dir ./backend/mpv_config",
+            shell=True,
+        ),
     ]
 
     def cleanup(signum, frame):
@@ -96,53 +103,47 @@ def dev_compiled():
 
 def fmt():
     """Format this repo"""
-    run("go -C backend fix ./...")
-    run("find backend -name '*.go' -print0 | xargs -0 gofmt -w -s")
+    run("cargo fmt --manifest-path backend/Cargo.toml")
     run("bun i")
     run("bun run oxfmt")
     run("bun run oxlint --fix-dangerously")
     run("uv run ruff format")
     run("uv run ruff check --fix")
-    run("go -C backend mod tidy")
 
 
-def go_source_hash():
+def source_hash():
     """Prints a unique hash for the repo's current source code"""
     print(_source_hash())
 
 
-def go_version():
-    return ".".join(subprocess.check_output("go version", shell=True).decode().strip().split(" ")[2:]).replace("/", "-")
+def rust_version():
+    return "rustc " + run_stdout("rustc --version").split()[1]
 
 
 def lint():
     """Lint this repo"""
     git_status = git_status_clean()
-    golint_out = run_stdout("gofmt -s -d backend", should_log=True)
-    if len(golint_out) > 0:
-        log.error("go lint failed. run ./make.py fmt to fix.")
+    rustfmt_out = run_stdout("cargo fmt --manifest-path backend/Cargo.toml -- --check", should_log=True)
+    if len(rustfmt_out) > 0:
+        log.error("rust lint failed. run ./make.py fmt to fix.")
         sys.exit(1)
+    run("cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings")
     run("bun i")
     run("bun run oxfmt --check")
     run("bun run oxlint")
     run("uv run ruff format --check")
     run("uv run ruff check")
-    # run go mod tidy / go fix and make sure git status is clean after
-    run("go -C backend mod tidy")
     if not git_status_clean():
         if git_status:
-            log.error("git status is not clean after go mod tidy")
+            log.error("git status is not clean")
         else:
             log.error("git status is not clean.")
         sys.exit(1)
-    run("go -C backend fix ./...")
-    if not git_status_clean():
-        log.error("git status is not clean after go fix")
 
 
 def test():
-    """Run Go tests"""
-    run("go test -C backend ./...")
+    """Run Rust tests"""
+    run("cargo test --manifest-path backend/Cargo.toml")
 
 
 def platform():
@@ -181,23 +182,15 @@ def run_stdout(cmd, error_status_ok=True, should_log=False):
         sys.exit(e.returncode)
 
 
-def set_go_version():
-    """Set the Go version across all configuration files"""
+def set_rust_version():
+    """Set the minimum Rust version across all configuration files"""
     if len(sys.argv) < 3:
-        print("Usage: make.py set_go_version <version>")
-        print("Example: make.py set_go_version 1.26.0")
+        print("Usage: make.py set_rust_version <version>")
+        print("Example: make.py set_rust_version 1.100.0")
         sys.exit(1)
 
     version = sys.argv[2]
-
-    # Update .github/workflows/release-linux-glibc-x86_64.yml
-    run(f'sed -E -i -e "s/go-version: \\"\\^[0-9]+\\.[0-9]+\\.[0-9]+\\"/go-version: \\"^{version}\\"/" .github/workflows/release-linux-glibc-x86_64.yml')
-
-    # Update .github/workflows/test-branch.yml
-    run(f'sed -E -i -e "s/go-version: \\"\\^[0-9]+\\.[0-9]+\\.[0-9]+\\"/go-version: \\"^{version}\\"/" .github/workflows/test-branch.yml')
-
-    # Update backend/go.mod
-    run(f'sed -E -i -e "s/^go [0-9]+\\.[0-9]+\\.[0-9]+$/go {version}/" backend/go.mod')
+    run(f'sed -E -i -e "s/^rust-version = \\"[0-9]+\\.[0-9]+\\.[0-9]+\\"$/rust-version = \\"{version}\\"/" backend/Cargo.toml')
 
 
 def git_status_clean():
@@ -208,28 +201,37 @@ def git_status_clean():
 
 
 def _source_hash():
-    backend = Path(__file__).parent / "backend"
-    files = sorted(backend.rglob("*.go"))
+    backend = Path(__file__).parent / "backend" / "src"
+    files = sorted(backend.rglob("*.rs"))
     sha = hashlib.sha256()
     for f in files:
-        sha.update(str(f).encode())
+        sha.update(str(f.relative_to(backend)).encode())
         with open(f, "rb") as fh:
             sha.update(fh.read())
     return sha.hexdigest()
 
 
+def build_env():
+    return {
+        **os.environ,
+        "GNUPLEX_SOURCE_HASH": _source_hash(),
+        "GNUPLEX_PLATFORM": platform(),
+        "GNUPLEX_COMPILER_VERSION": rust_version(),
+    }
+
+
 TASKS = {
-    "build_go_ci": build_go_ci,
-    "build_go": build_go,
+    "build_ci": build_ci,
+    "build_backend": build_backend,
     "build": build,
     "bump_version": bump_version,
     "dev_compiled": dev_compiled,
     "dev": dev,
     "fmt": fmt,
     "build_frontend": build_frontend,
-    "go_source_hash": go_source_hash,
+    "source_hash": source_hash,
     "lint": lint,
-    "set_go_version": set_go_version,
+    "set_rust_version": set_rust_version,
     "test": test,
 }
 
