@@ -200,7 +200,9 @@ async fn scheduler(gnuplex: Arc<Gnuplex>, shutdown: watch::Sender<bool>) {
                     let _ = shutdown.send(true);
                 }
                 Ok(false) => {}
-                Err(err) => error!("c4cde0b8-1fd5-4ab0-a081-c59b4944e6af: upgrade job failed: {err}"),
+                Err(err) => {
+                    error!("c4cde0b8-1fd5-4ab0-a081-c59b4944e6af: upgrade job failed: {err}")
+                }
             }
         }
         tokio::time::sleep(std::time::Duration::from_secs(20)).await;
